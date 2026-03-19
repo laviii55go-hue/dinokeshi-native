@@ -221,14 +221,13 @@ export function shuffleGrid(grid: Cell[][]): Cell[][] {
 // --- Henkou (convert type) ---
 
 export function convertType(grid: Cell[][], fromType: number): Cell[][] {
-  const basicTypes = [0, 1, 2, 3, 4, 5];
+  const basicTypes = [0, 1, 2, 3, 4, 5].filter(t => t !== fromType);
+  // Pick ONE random target type for all converted cells
+  const targetType = basicTypes[Math.floor(Math.random() * basicTypes.length)];
   const newGrid = grid.map(row =>
     row.map(cell => {
       if (cell.type === fromType && !cell.bomb) {
-        return {
-          ...cell,
-          type: basicTypes[Math.floor(Math.random() * basicTypes.length)],
-        };
+        return { ...cell, type: targetType };
       }
       return { ...cell };
     })

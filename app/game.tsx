@@ -1,43 +1,42 @@
-import { Image, ImageBackground } from 'expo-image';
 import * as Haptics from 'expo-haptics';
+import { Image, ImageBackground } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import {
   Alert,
-  Animated,
   Dimensions,
   Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 
-import { COLS, ROWS, DINO_NAMES, DINO_UNLOCK_LV, DINO_EMOJI, groupsNeeded, availableDinoTypes } from '../game/constants';
+import { COLS, DINO_EMOJI, DINO_NAMES, DINO_UNLOCK_LV, groupsNeeded, ROWS } from '../game/constants';
 import { DINO_SOURCES } from '../game/images';
 import {
-  createGrid,
-  createInitialState,
-  getGroup,
-  minGroupSize,
-  explodeBomb,
   applyGravityAndRefill,
-  eraseCells,
-  eraseBombCells,
-  hasValidMoves,
-  shuffleGrid,
-  convertType,
-  checkLevelUp,
   calcScore,
+  checkLevelUp,
+  convertType,
+  createInitialState,
+  eraseBombCells,
+  eraseCells,
+  explodeBomb,
+  getGroup,
+  hasValidMoves,
+  minGroupSize,
+  shuffleGrid
 } from '../game/logic';
+import { BGM_NAMES, getCurrentBGMIndex, loadSoundEffects, onBgmChange, playBomb, playErase, playGameOver, playTick, setSoundVolume, startBGM, stopBGM, switchBGM } from '../game/sound';
+import { clearGameState, loadGameState, loadSettings, saveGameState, saveSettings, saveToRanking, type Settings } from '../game/storage';
 import type { Cell, GameState } from '../game/types';
-import { saveGameState, loadGameState, clearGameState, saveToRanking, loadSettings, saveSettings, type Settings } from '../game/storage';
-import { startBGM, stopBGM, switchBGM, BGM_NAMES, getCurrentBGMIndex, onBgmChange, loadSoundEffects, playTick, playErase, playBomb, playGameOver, setSoundVolume } from '../game/sound';
+
+import { fetchGlobalRankings, submitGlobalScore, type GlobalRankEntry, type RankPeriod } from '../game/firebase';
 
 const BG_IMAGE = require('../assets/images/bg.png');
 
@@ -52,90 +51,22 @@ const VOLUME_OPTIONS = [
 ];
 
 const NUM_SIZE_OPTIONS: { label: string; key: Settings['numberSize']; size: number }[] = [
-  { label: '小', key: 'sm', size: 0.6 },
-  { label: '中', key: 'md', size: 0.75 },
-  { label: '大', key: 'lg', size: 0.95 },
-  { label: '特大', key: 'xl', size: 1.2 },
+  { label: '小', key: 'sm', size: 0.75 },
+  { label: '中', key: 'md', size: 0.95 },
+  { label: '大', key: 'lg', size: 1.2 },
+  { label: '特大', key: 'xl', size: 1.5 },
 ];
 
-// --- Single cell component with press animation ---
-const CellView = React.memo(function CellView({
-  cell,
-  cellSize,
-  isHighlight,
-  isExploding,
-  numFontSize,
-  onPress,
-}: {
-  cell: Cell;
-  cellSize: number;
-  isHighlight: boolean;
-  isExploding: boolean;
-  numFontSize: number;
-  onPress: () => void;
-}) {
-  const scaleAnim = React.useRef(new Animated.Value(1)).current;
-  const isEmpty = cell.type < 0;
-
-  const handlePressIn = () => {
-    Animated.timing(scaleAnim, {
-      toValue: 0.85,
-      duration: 60,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      speed: 30,
-      bounciness: 10,
-    }).start();
-  };
-
-  return (
-    <TouchableOpacity
-      activeOpacity={1}
-      onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-    >
-      <Animated.View
-        style={[
-          styles.cell,
-          {
-            width: cellSize,
-            height: cellSize,
-            transform: [{ scale: scaleAnim }],
-          },
-          isEmpty && styles.cellEmpty,
-          cell.bomb && styles.cellBomb,
-          isHighlight && !cell.bomb && styles.cellHighlight,
-          isHighlight && cell.bomb && styles.cellHighlightBomb,
-          isExploding && styles.cellExploding,
-        ]}
-      >
-        {!isEmpty && !cell.bomb && (
-          <>
-            <Image source={DINO_SOURCES[cell.type]} style={styles.cellImage} contentFit="cover" />
-            <Text style={[styles.cellNum, { fontSize: numFontSize }]}>{cell.type + 1}</Text>
-          </>
-        )}
-        {cell.bomb && <Text style={[styles.bombEmoji, { fontSize: cellSize * 0.6 }]}>🌋</Text>}
-      </Animated.View>
-    </TouchableOpacity>
-  );
-});
+// No React.memo - cells must always re-render when grid changes
 
 export default function GameScreen() {
   const router = useRouter();
 
   // Layout calculations
   const horizontalPadding = 4;
-  const boardBorder = 3;
-  const boardPadding = 2;
-  const cellGap = 1;
+  const boardBorder = 2;
+  const boardPadding = 1;
+  const cellGap = 0;
   const innerWidth = Math.min(460, SCREEN_WIDTH - horizontalPadding * 2) - boardBorder * 2 - boardPadding * 2;
   const cellSize = Math.floor((innerWidth - (COLS - 1) * cellGap) / COLS);
   const actualBoardInner = cellSize * COLS + cellGap * (COLS - 1);
@@ -143,11 +74,14 @@ export default function GameScreen() {
 
   // Game state
   const [gameState, setGameState] = React.useState<GameState | null>(null);
-  const [animating, setAnimating] = React.useState(false);
+  const animatingRef = React.useRef(false);
+  const undoState = React.useRef<GameState | null>(null);
+  const [canUndo, setCanUndo] = React.useState(false);
   const [eraserMode, setEraserMode] = React.useState(false);
   const [henkouMode, setHenkouMode] = React.useState(false);
   const [highlightCells, setHighlightCells] = React.useState<Set<number>>(new Set());
   const [explodingCells, setExplodingCells] = React.useState<Set<number>>(new Set());
+  const [explodePhase, setExplodePhase] = React.useState(0); // 0=none, 1=red, 2=orange, 3=yellow
   const [popupText, setPopupText] = React.useState<string | null>(null);
   const [gameOverVisible, setGameOverVisible] = React.useState(false);
   const [settingsVisible, setSettingsVisible] = React.useState(false);
@@ -155,8 +89,13 @@ export default function GameScreen() {
   const [rulesVisible, setRulesVisible] = React.useState(false);
   const [rulesPage, setRulesPage] = React.useState(0);
   const [charPopup, setCharPopup] = React.useState<number | null>(null);
+  const [dinoInfoPopup, setDinoInfoPopup] = React.useState<number | null>(null);
   const [flashButton, setFlashButton] = React.useState<string | null>(null);
   const [rankings, setRankings] = React.useState<{ score: number; level: number; date: string }[]>([]);
+  const [globalRankings, setGlobalRankings] = React.useState<GlobalRankEntry[]>([]);
+  const [rankPeriod, setRankPeriod] = React.useState<RankPeriod>('daily');
+  const [rankTab, setRankTab] = React.useState<'local' | 'global'>('local');
+  const [loadingGlobal, setLoadingGlobal] = React.useState(false);
 
   // Settings state
   const [settings, setSettings] = React.useState<Settings>({
@@ -193,6 +132,10 @@ export default function GameScreen() {
     return () => { stopBGM(); unsub(); };
   }, []);
 
+  // Keep a ref to always have the latest gameState for async handlers
+  const gsRef = React.useRef(gameState);
+  gsRef.current = gameState;
+
   // Auto-save
   React.useEffect(() => {
     if (gameState && gameState.running) saveGameState(gameState);
@@ -227,14 +170,29 @@ export default function GameScreen() {
   const numSizeMultiplier = NUM_SIZE_OPTIONS.find(o => o.key === settings.numberSize)?.size ?? 0.75;
   const numFontSize = Math.max(10, cellSize * 0.32 * numSizeMultiplier / 0.75);
 
+  // Helper: update state AND sync ref immediately
+  const commitState = (ns: GameState) => {
+    gsRef.current = ns;
+    setGameState(ns);
+  };
+
   const updateState = (partial: Partial<GameState>) => {
-    setGameState(prev => prev ? { ...prev, ...partial } : prev);
+    setGameState(prev => {
+      if (!prev) return prev;
+      const ns = { ...prev, ...partial };
+      gsRef.current = ns;
+      return ns;
+    });
   };
 
   // ====== Cell press handler ======
+  // ALL grid computation happens inside setGameState(prev => ...) to guarantee
+  // we always operate on the latest grid, never a stale closure.
   const handleCellPress = async (r: number, c: number) => {
-    if (animating || !running) return;
-    const cell = grid[r][c];
+    if (animatingRef.current || !running) return;
+    const gs = gsRef.current;
+    if (!gs) return;
+    const cell = gs.grid[r][c];
 
     // Eraser mode
     if (eraserMode) {
@@ -242,11 +200,18 @@ export default function GameScreen() {
       setEraserMode(false);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       playErase();
-      const newGrid = eraseCells(grid, [[r, c]]);
-      const filledGrid = applyGravityAndRefill(newGrid, level);
-      const newState: GameState = { ...gameState, grid: filledGrid, eraserCount: eraserCount - 1 };
-      setGameState(newState);
-      checkAfterErase(newState);
+      setGameState(prev => {
+        if (!prev) return prev;
+        const g = prev.grid;
+        if (g[r][c].type < 0) return prev;
+        pushUndo(prev);
+        const erased = eraseCells(g, [[r, c]]);
+        const filled = applyGravityAndRefill(erased, prev.level);
+        const ns = { ...prev, grid: filled, eraserCount: prev.eraserCount - 1 };
+        gsRef.current = ns;
+        checkAfterErase(ns);
+        return ns;
+      });
       return;
     }
 
@@ -256,48 +221,76 @@ export default function GameScreen() {
       setHenkouMode(false);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       playErase();
-      const converted = convertType(grid, cell.type);
-      const newState: GameState = { ...gameState, grid: converted, henkouCount: henkouCount - 1 };
-      setGameState(newState);
-      checkAfterErase(newState);
+      const targetType = cell.type;
+      setGameState(prev => {
+        if (!prev) return prev;
+        pushUndo(prev);
+        const converted = convertType(prev.grid, targetType);
+        const ns = { ...prev, grid: converted, henkouCount: prev.henkouCount - 1 };
+        gsRef.current = ns;
+        checkAfterErase(ns);
+        return ns;
+      });
       return;
     }
 
     // Bomb click
     if (cell.bomb) {
-      setAnimating(true);
+      animatingRef.current = true;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       playBomb();
-      const result = explodeBomb(grid, r, c);
 
       if (settings.bombWaveEffect) {
+        const result = explodeBomb(gs.grid, r, c);
+        // Phase 1: Red flash
         setExplodingCells(result.destroyed);
-        await delay(400);
+        setExplodePhase(1);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        await delay(150);
+        // Phase 2: Orange
+        setExplodePhase(2);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        await delay(150);
+        // Phase 3: Yellow flash out
+        setExplodePhase(3);
+        await delay(200);
         setExplodingCells(new Set());
+        setExplodePhase(0);
       }
 
-      const erased = eraseBombCells(grid, result.destroyed);
-      const filledGrid = applyGravityAndRefill(erased, level);
-      const bombScore = result.destroyed.size * 2;
-      const newState: GameState = {
-        ...gameState, grid: filledGrid,
-        score: score + bombScore, erasedGroups: erasedGroups + 1,
-      };
-      showPopup(`🌋 +${bombScore}pts`);
-      setGameState(newState);
-      setAnimating(false);
-      processLevelUp(newState);
-      checkAfterErase(newState);
+      // All grid work inside prev => to use latest grid
+      setGameState(prev => {
+        if (!prev) return prev;
+        const g = prev.grid;
+        if (!g[r][c].bomb) return prev;
+        pushUndo(prev);
+        const result = explodeBomb(g, r, c);
+        const erased = eraseBombCells(g, result.destroyed);
+        const filled = applyGravityAndRefill(erased, prev.level);
+        const bombScore = result.destroyed.size * 2;
+        showPopup(`🌋 +${bombScore}pts`);
+        const ns = {
+          ...prev, grid: filled,
+          score: prev.score + bombScore, erasedGroups: prev.erasedGroups + 1,
+        };
+        gsRef.current = ns;
+        processLevelUp(ns);
+        checkAfterErase(ns);
+        return ns;
+      });
+      animatingRef.current = false;
       return;
     }
 
     // Normal cell click
     if (cell.type < 0) return;
-    const group = getGroup(grid, r, c);
+
+    // Pre-check from ref for early validation (highlight / reject)
+    const preGroup = getGroup(gs.grid, r, c);
     const required = minGroupSize(cell.type);
 
-    if (group.length < required) {
-      const hl = new Set(group.map(([gr, gc]) => gr * COLS + gc));
+    if (preGroup.length < required) {
+      const hl = new Set(preGroup.map(([gr, gc]) => gr * COLS + gc));
       setHighlightCells(hl);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       playTick();
@@ -305,34 +298,38 @@ export default function GameScreen() {
       return;
     }
 
-    // Valid group - erase with highlight phase
-    setAnimating(true);
+    // Show highlight
+    animatingRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     playErase();
-
-    const hl = new Set(group.map(([gr, gc]) => gr * COLS + gc));
+    const hl = new Set(preGroup.map(([gr, gc]) => gr * COLS + gc));
     setHighlightCells(hl);
     await delay(250);
-
-    // Erase highlighted cells (show empty briefly)
-    const erased = eraseCells(grid, group);
-    setGameState(prev => prev ? { ...prev, grid: erased } : prev);
     setHighlightCells(new Set());
-    await delay(150);
 
-    // Apply gravity and refill
-    const filledGrid = applyGravityAndRefill(erased, level);
-    const pts = calcScore(group.length, cell.type);
-    const newState: GameState = {
-      ...gameState, grid: filledGrid,
-      score: score + pts, erasedGroups: erasedGroups + 1,
-    };
-
-    showPopup(pts >= 25 ? `+${pts}pts ✨` : `+${pts}pts`);
-    setGameState(newState);
-    setAnimating(false);
-    processLevelUp(newState);
-    checkAfterErase(newState);
+    // Erase: re-find group from prev.grid inside setState to guarantee correctness
+    setGameState(prev => {
+      if (!prev) return prev;
+      const g = prev.grid;
+      if (g[r][c].type < 0) return prev; // cell already gone
+      const group = getGroup(g, r, c);
+      const cellType = g[r][c].type;
+      if (group.length < minGroupSize(cellType)) return prev;
+      pushUndo(prev);
+      const erased = eraseCells(g, group);
+      const filled = applyGravityAndRefill(erased, prev.level);
+      const pts = calcScore(group.length, cellType);
+      showPopup(pts >= 25 ? `+${pts}pts ✨` : `+${pts}pts`);
+      const ns = {
+        ...prev, grid: filled,
+        score: prev.score + pts, erasedGroups: prev.erasedGroups + 1,
+      };
+      gsRef.current = ns;
+      processLevelUp(ns);
+      checkAfterErase(ns);
+      return ns;
+    });
+    animatingRef.current = false;
   };
 
   const processLevelUp = (state: GameState) => {
@@ -362,7 +359,12 @@ export default function GameScreen() {
     if (result.earnedHenkou) items.push('変×1');
     if (items.length > 0) msg += ` ${items.join(' ')}`;
     showPopup(msg, 2000);
-    setGameState(prev => prev ? { ...prev, ...updates } : prev);
+    setGameState(prev => {
+      if (!prev) return prev;
+      const ns = { ...prev, ...updates };
+      gsRef.current = ns;
+      return ns;
+    });
   };
 
   const checkAfterErase = (state: GameState) => {
@@ -391,6 +393,10 @@ export default function GameScreen() {
     updateState({ running: false });
     await clearGameState();
     await saveToRanking(state.score, state.level);
+    // Submit to global ranking if player name is set
+    if (settings.playerName) {
+      submitGlobalScore(settings.playerName, state.score, state.level);
+    }
     setGameOverVisible(true);
     showPopup('GAME OVER', 3000);
   };
@@ -403,6 +409,22 @@ export default function GameScreen() {
     if (settings.bgmOn) { try { await startBGM(); } catch {} }
   };
 
+  const pushUndo = (state: GameState) => {
+    undoState.current = state;
+    setCanUndo(true);
+  };
+
+  const handleUndo = () => {
+    if (!undoState.current || animatingRef.current) return;
+    const prev = undoState.current;
+    undoState.current = null;
+    gsRef.current = prev;
+    setGameState(prev);
+    setCanUndo(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    showPopup('↩ 戻しました');
+  };
+
   const handleRetire = () => {
     Alert.alert('リタイア', 'ゲームを終了しますか？スコアは記録されます。', [
       { text: 'キャンセル', style: 'cancel' },
@@ -411,7 +433,7 @@ export default function GameScreen() {
   };
 
   const handleShuffle = () => {
-    if (shuffleCount <= 0 || animating) return;
+    if (shuffleCount <= 0 || animatingRef.current) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     const shuffled = shuffleGrid(grid);
     setGameState(prev => prev ? { ...prev, grid: shuffled, shuffleCount: prev.shuffleCount - 1 } : prev);
@@ -419,14 +441,14 @@ export default function GameScreen() {
   };
 
   const handleEraser = () => {
-    if (eraserCount <= 0 || animating) return;
+    if (eraserCount <= 0 || animatingRef.current) return;
     setHenkouMode(false);
     setEraserMode(!eraserMode);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const handleHenkou = () => {
-    if (henkouCount <= 0 || animating) return;
+    if (henkouCount <= 0 || animatingRef.current) return;
     setEraserMode(false);
     setHenkouMode(!henkouMode);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -439,7 +461,7 @@ export default function GameScreen() {
         if (grid[r][c].bomb) {
           setHighlightCells(new Set([r * COLS + c]));
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          setTimeout(() => setHighlightCells(new Set()), 2000);
+          setTimeout(() => setHighlightCells(new Set()), 5000);
           showPopup('🌋 ボルケーノをタップ！');
           return;
         }
@@ -448,7 +470,7 @@ export default function GameScreen() {
         if (group.length >= minGroupSize(grid[r][c].type)) {
           setHighlightCells(new Set(group.map(([gr, gc]) => gr * COLS + gc)));
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          setTimeout(() => setHighlightCells(new Set()), 2000);
+          setTimeout(() => setHighlightCells(new Set()), 5000);
           showPopup(`${DINO_NAMES[grid[r][c].type]}を${group.length}個消せる！`);
           return;
         }
@@ -473,7 +495,11 @@ export default function GameScreen() {
       <View style={{ paddingTop: STATUS_BAR_HEIGHT, flex: 1 }}>
         {/* Header */}
         <View style={[styles.headerCard, { marginHorizontal: horizontalPadding }]}>
+          {/* Row 1: Title + nav buttons */}
           <View style={styles.headerRow}>
+            <View style={styles.headerTitleWrap}>
+              <Text style={styles.headerTitle}>🦕 恐竜けし</Text>
+            </View>
             <TouchableOpacity style={[styles.smallBtn, styles.smallBtnOutline]} onPress={() => setRulesVisible(true)}>
               <Text style={[styles.smallBtnText, styles.smallBtnTextOutline]}>？</Text>
             </TouchableOpacity>
@@ -490,12 +516,20 @@ export default function GameScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Row 2: Action + item buttons */}
           <View style={styles.headerRowWrap}>
             <TouchableOpacity style={[styles.actionBtn, styles.retireBtn]} onPress={handleRetire}>
               <Text style={styles.actionBtnText}>リタイア</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.actionBtn, styles.hintBtn]} onPress={handleHint}>
               <Text style={styles.actionBtnText}>ヒント</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.undoBtn, !canUndo && styles.undoBtnDisabled]}
+              onPress={handleUndo}
+              disabled={!canUndo}
+            >
+              <Text style={[styles.actionBtnText, !canUndo && { opacity: 0.4 }]}>↩戻</Text>
             </TouchableOpacity>
             <View style={styles.itemsGroup}>
               {[
@@ -535,22 +569,26 @@ export default function GameScreen() {
             </View>
             <View style={styles.statusScore}>
               <Text style={styles.scoreLabel}>SCORE</Text>
-              <Text style={styles.scoreValue}>{String(score).padStart(6, '0')}</Text>
+              <Text style={styles.scoreValue}>{formatScore(score)}</Text>
             </View>
           </View>
         </View>
 
-        {/* Mode indicator */}
-        {(eraserMode || henkouMode) && (
-          <View style={styles.modeIndicator}>
-            <Text style={styles.modeText}>
-              {eraserMode ? '🔴 消したいセルをタップ' : '🟡 変換する恐竜をタップ'}
-            </Text>
-            <TouchableOpacity onPress={() => { setEraserMode(false); setHenkouMode(false); }}>
-              <Text style={styles.modeCancelText}>キャンセル</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {/* Mode indicator - always takes space to prevent layout shift */}
+        <View style={[styles.modeIndicator, !(eraserMode || henkouMode) && styles.modeHidden]}>
+          {(eraserMode || henkouMode) ? (
+            <>
+              <Text style={styles.modeText}>
+                {eraserMode ? '🔴 消したいセルをタップ' : '🟡 変換する恐竜をタップ'}
+              </Text>
+              <TouchableOpacity onPress={() => { setEraserMode(false); setHenkouMode(false); }}>
+                <Text style={styles.modeCancelText}>キャンセル</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text style={styles.modeTextPlaceholder}> </Text>
+          )}
+        </View>
 
         {/* Board */}
         <View style={styles.centerArea}>
@@ -559,23 +597,41 @@ export default function GameScreen() {
               {grid.map((row, r) =>
                 row.map((cell, c) => {
                   const key = r * COLS + c;
+                  const isHighlight = highlightCells.has(key);
+                  const isExploding = explodingCells.has(key);
+                  const isEmpty = cell.type < 0;
+
                   return (
-                    <View
-                      key={key}
-                      style={{
-                        marginRight: c === COLS - 1 ? 0 : cellGap,
-                        marginBottom: r === ROWS - 1 ? 0 : cellGap,
-                      }}
+                    <TouchableOpacity
+                      key={`${key}-${cell.type}-${cell.bomb}`}
+                      activeOpacity={0.75}
+                      onPress={() => handleCellPress(r, c)}
+                      style={[
+                        styles.cell,
+                        {
+                          width: cellSize,
+                          height: cellSize,
+                          marginRight: c === COLS - 1 ? 0 : cellGap,
+                          marginBottom: r === ROWS - 1 ? 0 : cellGap,
+                        },
+                        isEmpty && styles.cellEmpty,
+                        cell.bomb && styles.cellBomb,
+                        isHighlight && !cell.bomb && styles.cellHighlight,
+                        isHighlight && cell.bomb && styles.cellHighlightBomb,
+                        isExploding && explodePhase === 1 && styles.cellExplodeRed,
+                        isExploding && explodePhase === 2 && styles.cellExplodeOrange,
+                        isExploding && explodePhase === 3 && styles.cellExplodeYellow,
+                        (eraserMode || henkouMode) && !isEmpty && styles.cellSelectMode,
+                      ]}
                     >
-                      <CellView
-                        cell={cell}
-                        cellSize={cellSize}
-                        isHighlight={highlightCells.has(key)}
-                        isExploding={explodingCells.has(key)}
-                        numFontSize={numFontSize}
-                        onPress={() => handleCellPress(r, c)}
-                      />
-                    </View>
+                      {!isEmpty && !cell.bomb && (
+                        <>
+                          <Image source={DINO_SOURCES[cell.type]} style={styles.cellImage} contentFit="cover" />
+                          <Text style={[styles.cellNum, { fontSize: numFontSize }]}>{cell.type + 1}</Text>
+                        </>
+                      )}
+                      {cell.bomb && <Text style={[styles.bombEmoji, { fontSize: cellSize * 0.6 }]}>🌋</Text>}
+                    </TouchableOpacity>
                   );
                 })
               )}
@@ -585,11 +641,19 @@ export default function GameScreen() {
 
         {/* Footer: dino panel */}
         <View style={[styles.footerPanel, { marginHorizontal: horizontalPadding }]}>
+          <View style={styles.footerLabelRow}>
+            <Text style={styles.footerLabel}>登場キャラクター</Text>
+          </View>
           <View style={styles.footerGrid}>
             {DINO_SOURCES.map((src, i) => {
               const unlocked = level >= DINO_UNLOCK_LV[i];
               return (
-                <View key={i} style={styles.footerIconWrap}>
+                <TouchableOpacity
+                  key={i}
+                  style={styles.footerIconWrap}
+                  activeOpacity={0.7}
+                  onPress={() => unlocked && setDinoInfoPopup(i)}
+                >
                   <View style={[styles.footerIconCard, !unlocked && styles.footerIconLocked]}>
                     {unlocked ? (
                       <Image source={src} style={styles.footerIcon} contentFit="contain" />
@@ -597,7 +661,7 @@ export default function GameScreen() {
                       <Text style={styles.lockedText}>?</Text>
                     )}
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -618,7 +682,7 @@ export default function GameScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>GAME OVER</Text>
-            <Text style={styles.modalScore}>スコア: {score}</Text>
+            <Text style={styles.modalScore}>スコア: {formatScore(score)}</Text>
             <Text style={styles.modalLevel}>レベル: {level}</Text>
             <TouchableOpacity style={styles.modalBtn} onPress={handleRestart}>
               <Text style={styles.modalBtnText}>もう一度プレイ</Text>
@@ -859,25 +923,119 @@ export default function GameScreen() {
         </View>
       </Modal>
 
+      {/* Dino Info Popup */}
+      <Modal visible={dinoInfoPopup !== null} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            {dinoInfoPopup !== null && (
+              <>
+                <Image source={DINO_SOURCES[dinoInfoPopup]} style={styles.charPopupImage} contentFit="contain" />
+                <Text style={styles.charPopupName}>{DINO_NAMES[dinoInfoPopup]} {DINO_EMOJI[dinoInfoPopup]}</Text>
+                <Text style={styles.charPopupDesc}>
+                  数字: {dinoInfoPopup + 1}（{dinoInfoPopup + 1}個つながると消せる）
+                </Text>
+                <Text style={[styles.charPopupDesc, { color: '#9ca3af' }]}>
+                  {DINO_UNLOCK_LV[dinoInfoPopup] === 0 ? '初期から使用可能' : `LV${DINO_UNLOCK_LV[dinoInfoPopup]}で解放`}
+                </Text>
+                <TouchableOpacity style={styles.modalBtn} onPress={() => setDinoInfoPopup(null)}>
+                  <Text style={styles.modalBtnText}>閉じる</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* Ranking */}
       <Modal visible={rankingVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { maxHeight: '70%' }]}>
+          <View style={[styles.modalCard, { maxHeight: '80%' }]}>
             <Text style={styles.modalTitle}>ランキング</Text>
-            <ScrollView>
-              {rankings.length === 0 ? (
+
+            {/* Tab: Local / Global */}
+            <View style={styles.rankTabRow}>
+              <TouchableOpacity
+                style={[styles.rankTab, rankTab === 'local' && styles.rankTabActive]}
+                onPress={() => setRankTab('local')}
+              >
+                <Text style={[styles.rankTabText, rankTab === 'local' && styles.rankTabTextActive]}>ローカル</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.rankTab, rankTab === 'global' && styles.rankTabActive]}
+                onPress={async () => {
+                  setRankTab('global');
+                  setLoadingGlobal(true);
+                  const data = await fetchGlobalRankings(rankPeriod);
+                  setGlobalRankings(data);
+                  setLoadingGlobal(false);
+                }}
+              >
+                <Text style={[styles.rankTabText, rankTab === 'global' && styles.rankTabTextActive]}>グローバル</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Global: Period filter */}
+            {rankTab === 'global' && (
+              <View style={styles.rankPeriodRow}>
+                {(['daily', 'weekly', 'all'] as RankPeriod[]).map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[styles.rankPeriodBtn, rankPeriod === p && styles.rankPeriodBtnActive]}
+                    onPress={async () => {
+                      setRankPeriod(p);
+                      setLoadingGlobal(true);
+                      const data = await fetchGlobalRankings(p);
+                      setGlobalRankings(data);
+                      setLoadingGlobal(false);
+                    }}
+                  >
+                    <Text style={[styles.rankPeriodText, rankPeriod === p && styles.rankPeriodTextActive]}>
+                      {p === 'daily' ? '今日' : p === 'weekly' ? '今週' : '全期間'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <ScrollView style={{ width: '100%' }}>
+              {rankTab === 'local' ? (
+                rankings.length === 0 ? (
+                  <Text style={styles.rankEmpty}>まだ記録がありません</Text>
+                ) : (
+                  rankings.map((entry, i) => (
+                    <View key={i} style={styles.rankRow}>
+                      <Text style={styles.rankNum}>{rankLabel(i)}</Text>
+                      <Text style={styles.rankScore}>{formatScore(entry.score)}pts</Text>
+                      <Text style={styles.rankLevel}>LV{entry.level}</Text>
+                      <Text style={styles.rankDate}>{entry.date}</Text>
+                    </View>
+                  ))
+                )
+              ) : loadingGlobal ? (
+                <Text style={styles.rankEmpty}>読み込み中...</Text>
+              ) : globalRankings.length === 0 ? (
                 <Text style={styles.rankEmpty}>まだ記録がありません</Text>
               ) : (
-                rankings.map((entry, i) => (
+                globalRankings.map((entry, i) => (
                   <View key={i} style={styles.rankRow}>
-                    <Text style={styles.rankNum}>{i + 1}.</Text>
-                    <Text style={styles.rankScore}>{entry.score}pts</Text>
+                    <Text style={styles.rankNum}>{rankLabel(i)}</Text>
+                    <Text style={styles.rankScore}>{formatScore(entry.score)}</Text>
+                    <Text style={styles.rankName} numberOfLines={1}>
+                      {entry.name}{entry.consecutiveDays >= 3 ? ' 🔥' : ''}
+                    </Text>
                     <Text style={styles.rankLevel}>LV{entry.level}</Text>
                     <Text style={styles.rankDate}>{entry.date}</Text>
                   </View>
                 ))
               )}
             </ScrollView>
+
+            {rankTab === 'global' && !settings.playerName && (
+              <Text style={{ fontSize: 11, color: '#ef4444', fontWeight: '700', textAlign: 'center' }}>
+                設定でプレイヤー名を登録するとグローバルランキングに参加できます
+              </Text>
+            )}
+
             <TouchableOpacity style={styles.modalBtn} onPress={() => setRankingVisible(false)}>
               <Text style={styles.modalBtnText}>閉じる</Text>
             </TouchableOpacity>
@@ -886,6 +1044,17 @@ export default function GameScreen() {
       </Modal>
     </ImageBackground>
   );
+}
+
+function rankLabel(i: number): string {
+  if (i === 0) return '🥇';
+  if (i === 1) return '🥈';
+  if (i === 2) return '🥉';
+  return `${i + 1}.`;
+}
+
+function formatScore(n: number): string {
+  return n.toLocaleString();
 }
 
 function delay(ms: number) {
@@ -898,13 +1067,20 @@ const styles = StyleSheet.create({
     flex: 1, textAlign: 'center', textAlignVertical: 'center',
     fontSize: 18, fontWeight: '800', color: '#fff',
   },
-  centerArea: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
+  centerArea: { alignItems: 'center', paddingTop: 1 },
 
   // Header
   headerCard: {
-    backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: 14, padding: 6, gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: 14, padding: 6, gap: 4,
   },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  headerTitleWrap: {
+    backgroundColor: 'rgba(255,255,255,0.92)', paddingVertical: 4, paddingHorizontal: 12,
+    borderRadius: 22, borderWidth: 2, borderColor: '#d97706',
+  },
+  headerTitle: {
+    color: '#d97706', fontWeight: '900', fontSize: 16, letterSpacing: 1,
+  },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
   headerRowWrap: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   smallBtn: { paddingVertical: 5, paddingHorizontal: 9, borderRadius: 999 },
   smallBtnOutline: {
@@ -918,10 +1094,18 @@ const styles = StyleSheet.create({
   actionBtn: { borderRadius: 10, paddingVertical: 7, paddingHorizontal: 12 },
   retireBtn: { backgroundColor: '#dc2626' },
   hintBtn: { backgroundColor: '#0891b2' },
+  undoBtn: { backgroundColor: '#7c3aed' },
+  undoBtnDisabled: { backgroundColor: '#6b7280', opacity: 0.5 },
   actionBtnText: { color: 'white', fontWeight: '900', fontSize: 13 },
 
   itemsGroup: { flexDirection: 'row', gap: 6, marginLeft: 'auto' },
   itemBtn: { width: 42, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  itemCount: {
+    position: 'absolute', top: -5, right: -5,
+    backgroundColor: '#ef4444', color: '#fff', fontSize: 10,
+    fontWeight: '900', borderRadius: 8, minWidth: 16,
+    textAlign: 'center', paddingHorizontal: 3, overflow: 'hidden',
+  },
   itemBtnDisabled: { backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 2, borderColor: 'rgba(0,0,0,0.15)' },
   itemBtnActive: { backgroundColor: '#f59e0b', borderWidth: 2, borderColor: '#d97706' },
   itemBtnSelected: { backgroundColor: '#ef4444', borderColor: '#b91c1c' },
@@ -929,12 +1113,6 @@ const styles = StyleSheet.create({
   itemBtnText: { fontWeight: '900', fontSize: 15 },
   itemBtnTextDisabled: { color: 'rgba(0,0,0,0.35)' },
   itemBtnTextActive: { color: '#fff' },
-  itemCount: {
-    position: 'absolute', top: -4, right: -4,
-    backgroundColor: '#ef4444', color: '#fff', fontSize: 10,
-    fontWeight: '900', borderRadius: 8, minWidth: 16,
-    textAlign: 'center', paddingHorizontal: 3, overflow: 'hidden',
-  },
 
   // Status
   statusRow: {
@@ -960,9 +1138,14 @@ const styles = StyleSheet.create({
   modeIndicator: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 12, backgroundColor: 'rgba(239,68,68,0.2)',
-    paddingVertical: 5, marginHorizontal: 4, borderRadius: 8, marginTop: 3,
+    paddingVertical: 4, marginHorizontal: 4, borderRadius: 8, marginTop: 2,
+    minHeight: 26,
+  },
+  modeHidden: {
+    backgroundColor: 'transparent',
   },
   modeText: { fontWeight: '800', color: '#991b1b', fontSize: 12 },
+  modeTextPlaceholder: { fontSize: 12 },
   modeCancelText: { fontWeight: '800', color: '#dc2626', fontSize: 12, textDecorationLine: 'underline' },
 
   // Board
@@ -975,12 +1158,16 @@ const styles = StyleSheet.create({
   cell: {
     borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.88)',
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    borderWidth: 2, borderColor: 'transparent',
   },
   cellEmpty: { backgroundColor: 'rgba(0,0,0,0.04)' },
   cellBomb: { backgroundColor: '#7f1d1d' },
-  cellHighlight: { backgroundColor: '#fef08a', borderWidth: 2, borderColor: '#f59e0b' },
-  cellHighlightBomb: { backgroundColor: '#fca5a5', borderWidth: 2, borderColor: '#ef4444' },
-  cellExploding: { backgroundColor: '#fbbf24', opacity: 0.5 },
+  cellHighlight: { backgroundColor: '#fef08a', borderColor: '#f59e0b' },
+  cellHighlightBomb: { backgroundColor: '#fca5a5', borderColor: '#ef4444' },
+  cellExplodeRed: { backgroundColor: '#ef4444', borderColor: '#dc2626' },
+  cellExplodeOrange: { backgroundColor: '#f97316', borderColor: '#ea580c' },
+  cellExplodeYellow: { backgroundColor: '#fbbf24', borderColor: '#f59e0b', opacity: 0.4 },
+  cellSelectMode: { borderColor: '#fbbf24' },
   cellImage: { width: '100%', height: '100%' },
   cellNum: {
     position: 'absolute', bottom: 1, right: 3,
@@ -991,9 +1178,18 @@ const styles = StyleSheet.create({
   bombEmoji: {},
 
   // Footer
-  footerPanel: { alignItems: 'center', paddingBottom: 4, paddingTop: 2 },
-  footerGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap' },
-  footerIconWrap: { width: `${100 / 9}%`, padding: 1 },
+  footerPanel: { alignItems: 'center', paddingBottom: 4, paddingTop: 0, width: '100%' },
+  footerLabelRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 3, minHeight: 26,
+  },
+  footerLabel: {
+    fontWeight: '800', fontSize: 12, color: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(0,0,0,0.25)', paddingVertical: 2, paddingHorizontal: 10,
+    borderRadius: 6, overflow: 'hidden',
+  },
+  footerGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
+  footerIconWrap: { width: `${100 / 6}%`, padding: 1 },
   footerIconCard: {
     aspectRatio: 1, borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.75)',
@@ -1001,8 +1197,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   footerIconLocked: { backgroundColor: 'rgba(0,0,0,0.15)' },
-  footerIcon: { width: '80%', height: '80%' },
-  lockedText: { fontSize: 14, fontWeight: '900', color: 'rgba(0,0,0,0.3)' },
+  footerIcon: { width: '82%', height: '82%' },
+  lockedText: { fontSize: 16, fontWeight: '900', color: 'rgba(0,0,0,0.3)' },
 
   // Popup
   popupOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
@@ -1102,13 +1298,29 @@ const styles = StyleSheet.create({
   settingsCloseBtnText: { color: '#d97706', fontWeight: '900', fontSize: 16 },
 
   // Ranking
+  rankTabRow: { flexDirection: 'row', gap: 0, width: '100%', borderRadius: 10, overflow: 'hidden' },
+  rankTab: {
+    flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: '#f3f4f6',
+  },
+  rankTabActive: { backgroundColor: '#f59e0b' },
+  rankTabText: { fontWeight: '800', fontSize: 13, color: '#6b7280' },
+  rankTabTextActive: { color: '#fff' },
+  rankPeriodRow: { flexDirection: 'row', gap: 6, width: '100%', justifyContent: 'center' },
+  rankPeriodBtn: {
+    paddingVertical: 5, paddingHorizontal: 14, borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+  },
+  rankPeriodBtnActive: { backgroundColor: '#d97706' },
+  rankPeriodText: { fontWeight: '700', fontSize: 12, color: '#6b7280' },
+  rankPeriodTextActive: { color: '#fff' },
+  rankName: { fontWeight: '700', color: '#374151', fontSize: 12, flex: 1 },
   rankEmpty: { fontSize: 14, color: '#9ca3af', textAlign: 'center', paddingVertical: 20 },
   rankRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#f3f4f6',
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: '#f3f4f6',
   },
-  rankNum: { width: 28, fontWeight: '900', color: '#d97706', fontSize: 16 },
-  rankScore: { flex: 1, fontWeight: '800', color: '#111827', fontSize: 15 },
-  rankLevel: { fontWeight: '700', color: '#6b7280', fontSize: 13 },
-  rankDate: { fontWeight: '600', color: '#9ca3af', fontSize: 12 },
+  rankNum: { width: 22, fontWeight: '900', color: '#d97706', fontSize: 14 },
+  rankScore: { width: 80, fontWeight: '800', color: '#111827', fontSize: 14, textAlign: 'right' },
+  rankLevel: { width: 40, fontWeight: '700', color: '#6b7280', fontSize: 12, textAlign: 'center' },
+  rankDate: { width: 52, fontWeight: '600', color: '#9ca3af', fontSize: 11, textAlign: 'right' },
 });
