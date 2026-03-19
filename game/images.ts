@@ -1,0 +1,20 @@
+// Centralized dino image sources
+export const DINO_SOURCES = [
+  require('../assets/images/dino-0.png'),
+  require('../assets/images/dino-1.png'),
+  require('../assets/images/dino-2.png'),
+  require('../assets/images/dino-3.png'),
+  require('../assets/images/dino-4.png'),
+  require('../assets/images/dino-5.png'),
+  require('../assets/images/dino-6.png'),
+  require('../assets/images/dino-7.png'),
+  require('../assets/images/dino-8.png'),
+  require('../assets/images/dino-9.png'),
+  require('../assets/images/dino-10.png'),
+  require('../assets/images/dino-11.png'),
+  require('../assets/images/dino-12.png'),
+  require('../assets/images/dino-13.png'),
+  require('../assets/images/dino-14.png'),
+  require('../assets/images/dino-15.png'),
+  require('../assets/images/dino-16.png'),
+] as const;

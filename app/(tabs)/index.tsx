@@ -25,7 +25,7 @@ export default function HomeScreen() {
         <TouchableOpacity
           activeOpacity={0.85}
           style={[styles.primaryButton, styles.shadow]}
-          onPress={() => router.push('/game')}>
+          onPress={() => router.push('/game' as Href)}>
           <Text style={styles.primaryButtonText}>🦕 ゲームスタート</Text>
         </TouchableOpacity>
 
@@ -35,6 +35,8 @@ export default function HomeScreen() {
           onPress={() => router.push('/howto' as Href)}>
           <Text style={styles.secondaryButtonText}>📖 あそびかた</Text>
         </TouchableOpacity>
+
+        <Text style={styles.version}>v1.0.0 (Expo Native)</Text>
       </View>
     </View>
   );
@@ -43,7 +45,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#fffbeb',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
@@ -51,9 +53,14 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 20,
-    padding: 18,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 8,
   },
   titleRow: {
     alignItems: 'center',
@@ -61,14 +68,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   title: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#fffbeb',
     color: '#d97706',
     fontSize: 28,
     fontWeight: '900',
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 22,
-    borderRadius: 10,
+    borderRadius: 12,
     letterSpacing: 1.2,
+    borderWidth: 3,
+    borderColor: '#f59e0b',
   },
   hero: {
     alignItems: 'center',
@@ -76,28 +85,28 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   heroImage: {
-    width: 220,
-    height: 220,
+    width: 180,
+    height: 180,
   },
   subtitle: {
-    color: 'rgba(0,0,0,0.75)',
-    fontSize: 13,
+    color: 'rgba(0,0,0,0.7)',
+    fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0.4,
   },
   primaryButton: {
     backgroundColor: '#f59e0b',
     borderRadius: 26,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 18,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 12,
   },
   primaryButtonText: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '900',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
   secondaryButton: {
     backgroundColor: '#ef4444',
@@ -114,10 +123,17 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   shadow: {
-    shadowColor: '#000',
+    shadowColor: '#f59e0b',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
+    shadowOpacity: 0.35,
     shadowRadius: 12,
-    elevation: 6,
+    elevation: 8,
+  },
+  version: {
+    textAlign: 'center',
+    marginTop: 16,
+    fontSize: 12,
+    color: 'rgba(0,0,0,0.35)',
+    fontWeight: '600',
   },
 });
