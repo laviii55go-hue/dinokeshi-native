@@ -2,9 +2,11 @@ import * as Haptics from 'expo-haptics';
 import { Image, ImageBackground } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
+import { useAd } from '../game/AdContext';
 import {
   Alert,
-  Dimensions,
+  Animated,
+  FlatList,
   Modal,
   Platform,
   ScrollView,
@@ -13,11 +15,14 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View
 } from 'react-native';
 
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { COLS, DINO_EMOJI, DINO_NAMES, DINO_UNLOCK_LV, groupsNeeded, ROWS } from '../game/constants';
 import { DINO_SOURCES } from '../game/images';
+import { GameBoard } from '../game/GameBoard';
 import {
   applyGravityAndRefill,
   calcScore,
@@ -32,22 +37,23 @@ import {
   minGroupSize,
   shuffleGrid
 } from '../game/logic';
-import { BGM_NAMES, getCurrentBGMIndex, loadSoundEffects, onBgmChange, playBomb, playErase, playGameOver, playTick, setSoundVolume, startBGM, stopBGM, switchBGM } from '../game/sound';
-import { clearGameState, loadGameState, loadSettings, saveGameState, saveSettings, saveToRanking, type Settings } from '../game/storage';
+import { BGM_NAMES, getCurrentBGMIndex, loadSoundEffects, onBgmChange, playBomb, playBonus, playBonusBig, playErase, playEraser, playGameOver, playHenkou, playShuffle, playTick, setSoundVolume, startBGM, stopBGM, switchBGM } from '../game/sound';
+import { clearGameState, loadGameState, loadRankings, loadSettings, saveGameState, saveSettings, saveToRanking, type Settings } from '../game/storage';
 import type { Cell, GameState } from '../game/types';
 
 import { fetchGlobalRankings, submitGlobalScore, type GlobalRankEntry, type RankPeriod } from '../game/firebase';
 
 const BG_IMAGE = require('../assets/images/bg.png');
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
 const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 36) : 44;
+// Vertical budget reserved for header, items row, info bar, footer, banner, status bar
+const VERTICAL_OVERHEAD = STATUS_BAR_HEIGHT + 240;
 
 const VOLUME_OPTIONS = [
   { label: '消', value: 0 },
-  { label: '小', value: 0.3 },
-  { label: '中', value: 0.7 },
-  { label: '大', value: 1.0 },
+  { label: '小', value: 0.1 },
+  { label: '中', value: 0.3 },
+  { label: '大', value: 0.5 },
 ];
 
 const NUM_SIZE_OPTIONS: { label: string; key: Settings['numberSize']; size: number }[] = [
@@ -61,28 +67,41 @@ const NUM_SIZE_OPTIONS: { label: string; key: Settings['numberSize']; size: numb
 
 export default function GameScreen() {
   const router = useRouter();
+  const adState = useAd();
 
-  // Layout calculations
+  // Layout calculations (responsive: use both width & height to fit tablets)
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const horizontalPadding = 4;
-  const boardBorder = 2;
-  const boardPadding = 1;
+  const boardBorder = 1;
+  const boardPadding = 0;
   const cellGap = 0;
-  const innerWidth = Math.min(460, SCREEN_WIDTH - horizontalPadding * 2) - boardBorder * 2 - boardPadding * 2;
-  const cellSize = Math.floor((innerWidth - (COLS - 1) * cellGap) / COLS);
+  const maxBoardWidth = screenWidth - horizontalPadding * 2 - boardBorder * 2 - boardPadding * 2;
+  const cellFromWidth = Math.floor((maxBoardWidth - (COLS - 1) * cellGap) / COLS);
+  const availableHeight = screenHeight - VERTICAL_OVERHEAD;
+  const cellFromHeight = Math.floor((availableHeight - (ROWS - 1) * cellGap) / ROWS);
+  const cellSize = Math.min(cellFromWidth, cellFromHeight);
   const actualBoardInner = cellSize * COLS + cellGap * (COLS - 1);
   const gridMaxWidth = actualBoardInner + boardPadding * 2 + boardBorder * 2;
 
   // Game state
   const [gameState, setGameState] = React.useState<GameState | null>(null);
   const animatingRef = React.useRef(false);
-  const undoState = React.useRef<GameState | null>(null);
-  const [canUndo, setCanUndo] = React.useState(false);
   const [eraserMode, setEraserMode] = React.useState(false);
   const [henkouMode, setHenkouMode] = React.useState(false);
-  const [highlightCells, setHighlightCells] = React.useState<Set<number>>(new Set());
-  const [explodingCells, setExplodingCells] = React.useState<Set<number>>(new Set());
-  const [explodePhase, setExplodePhase] = React.useState(0); // 0=none, 1=red, 2=orange, 3=yellow
-  const [popupText, setPopupText] = React.useState<string | null>(null);
+  const eraserModeRef = React.useRef(false);
+  const henkouModeRef = React.useRef(false);
+  // Use refs for board visual state to avoid parent re-renders
+  const highlightCellsRef = React.useRef<Set<number>>(new Set());
+  const explodingCellsRef = React.useRef<Map<number, number>>(new Map());
+  const explodePhaseRef = React.useRef(0);
+  const [boardTick, setBoardTick] = React.useState(0); // single trigger for board re-render
+
+  const triggerBoardUpdate = () => setBoardTick(t => t + 1);
+  const setHighlightCells = (s: Set<number>) => { highlightCellsRef.current = s; triggerBoardUpdate(); };
+  const setExplodingCells = (m: Map<number, number>) => { explodingCellsRef.current = m; };
+  const setExplodePhase = (p: number) => { explodePhaseRef.current = p; triggerBoardUpdate(); };
+  const popupTextRef = React.useRef<string | null>(null);
+  const popupSetterRef = React.useRef<(text: string | null) => void>(() => {});
   const [gameOverVisible, setGameOverVisible] = React.useState(false);
   const [settingsVisible, setSettingsVisible] = React.useState(false);
   const [rankingVisible, setRankingVisible] = React.useState(false);
@@ -90,22 +109,37 @@ export default function GameScreen() {
   const [rulesPage, setRulesPage] = React.useState(0);
   const [charPopup, setCharPopup] = React.useState<number | null>(null);
   const [dinoInfoPopup, setDinoInfoPopup] = React.useState<number | null>(null);
+  const [menuVisible, setMenuVisible] = React.useState(false);
+  const [exchangeVisible, setExchangeVisible] = React.useState(false);
+  const [namePromptVisible, setNamePromptVisible] = React.useState(false);
+  const [gameOverNameInput, setGameOverNameInput] = React.useState('');
+  const pendingScoreRef = React.useRef<{ score: number; level: number } | null>(null);
+  const [dotsFlash, setDotsFlash] = React.useState(false);
+  const dotsFlashTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [flashButton, setFlashButton] = React.useState<string | null>(null);
+  const exchangeAnim = React.useRef(new Animated.Value(1)).current;
+  const prevEraserCountRef = React.useRef<number | null>(null);
   const [rankings, setRankings] = React.useState<{ score: number; level: number; date: string }[]>([]);
   const [globalRankings, setGlobalRankings] = React.useState<GlobalRankEntry[]>([]);
   const [rankPeriod, setRankPeriod] = React.useState<RankPeriod>('daily');
   const [rankTab, setRankTab] = React.useState<'local' | 'global'>('local');
   const [loadingGlobal, setLoadingGlobal] = React.useState(false);
+  const footerListRef = React.useRef<FlatList>(null);
 
   // Settings state
   const [settings, setSettings] = React.useState<Settings>({
-    soundVolume: 0.7, bgmOn: true, dropAnimation: true,
+    soundVolume: 0.3, bgmOn: true, hapticsOn: true, dropAnimation: true,
     bombWaveEffect: true, numberSize: 'lg', playerName: '',
   });
   const [nameInput, setNameInput] = React.useState('');
+  const settingsRef = React.useRef(settings);
   const [bgmIndex, setBgmIndex] = React.useState(0);
 
   const popupTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hintTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkEraseTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const levelUpTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialize
   React.useEffect(() => {
@@ -114,7 +148,7 @@ export default function GameScreen() {
       setSettings(savedSettings);
       setNameInput(savedSettings.playerName);
       setSoundVolume(savedSettings.soundVolume);
-      await loadSoundEffects();
+      loadSoundEffects().then(() => setSoundVolume(savedSettings.soundVolume)); // re-apply volume after load
 
       const saved = await loadGameState();
       if (saved && saved.running) {
@@ -129,17 +163,50 @@ export default function GameScreen() {
       }
     })();
     const unsub = onBgmChange(() => setBgmIndex(getCurrentBGMIndex()));
-    return () => { stopBGM(); unsub(); };
+    return () => {
+      stopBGM(); unsub();
+      if (popupTimer.current) clearTimeout(popupTimer.current);
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      if (hintTimer.current) clearTimeout(hintTimer.current);
+      if (checkEraseTimer.current) clearTimeout(checkEraseTimer.current);
+      if (dotsFlashTimer.current) clearTimeout(dotsFlashTimer.current);
+      if (levelUpTimer.current) clearTimeout(levelUpTimer.current);
+    };
   }, []);
 
   // Keep a ref to always have the latest gameState for async handlers
   const gsRef = React.useRef(gameState);
   gsRef.current = gameState;
+  eraserModeRef.current = eraserMode;
+  henkouModeRef.current = henkouMode;
+  settingsRef.current = settings;
 
-  // Auto-save
+  // Auto-save (debounced: every 5 seconds)
+  const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
-    if (gameState && gameState.running) saveGameState(gameState);
+    if (gameState && gameState.running) {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => saveGameState(gameState), 5000);
+    }
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [gameState]);
+
+  // Exchange button animation: trigger once when eraserCount reaches 10
+  React.useEffect(() => {
+    if (!gameState) return;
+    const prev = prevEraserCountRef.current;
+    prevEraserCountRef.current = gameState.eraserCount;
+    if (prev !== null && prev < 10 && gameState.eraserCount >= 10) {
+      Animated.sequence([
+        Animated.timing(exchangeAnim, { toValue: 1.2, duration: 200, useNativeDriver: true }),
+        Animated.timing(exchangeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(exchangeAnim, { toValue: 1.15, duration: 150, useNativeDriver: true }),
+        Animated.timing(exchangeAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [gameState?.eraserCount]);
+
+  // Show new dino popup is now handled inside applyLevelUp via newTypes from checkLevelUp
 
   const updateSettings = (partial: Partial<Settings>) => {
     setSettings(prev => {
@@ -150,11 +217,34 @@ export default function GameScreen() {
     });
   };
 
-  const showPopup = (text: string, duration = 1500) => {
-    setPopupText(text);
+  // Deferred popup ref - used to avoid setState during render (inside setGameState callbacks)
+  const deferredPopupRef = React.useRef<{ text: string; duration: number } | null>(null);
+  const deferredLevelUpRef = React.useRef<{ dotsFlash: boolean; charPopup: number | null; pageIndex: number }>({ dotsFlash: false, charPopup: null, pageIndex: 0 });
+
+  const showPopup = (text: string, duration = 150) => {
+    popupTextRef.current = text;
+    popupSetterRef.current(text);
     if (popupTimer.current) clearTimeout(popupTimer.current);
-    popupTimer.current = setTimeout(() => setPopupText(null), duration);
+    popupTimer.current = setTimeout(() => {
+      popupTextRef.current = null;
+      popupSetterRef.current(null);
+    }, duration);
   };
+
+  const deferPopup = (text: string, duration = 150) => {
+    deferredPopupRef.current = { text, duration };
+  };
+
+  const flushDeferredPopup = () => {
+    if (deferredPopupRef.current) {
+      showPopup(deferredPopupRef.current.text, deferredPopupRef.current.duration);
+      deferredPopupRef.current = null;
+    }
+  };
+
+  // Stable ref for handleCellPress to avoid GameBoard re-renders
+  const cellPressRef = React.useRef<(r: number, c: number) => void>(() => {});
+  const stableCellPress = React.useCallback((r: number, c: number) => cellPressRef.current(r, c), []);
 
   if (!gameState) {
     return (
@@ -166,7 +256,6 @@ export default function GameScreen() {
 
   const { grid, level, score, erasedGroups, eraserCount, shuffleCount, henkouCount, running } = gameState;
   const needed = groupsNeeded(level);
-  const progressPct = Math.min(100, (erasedGroups / needed) * 100);
   const numSizeMultiplier = NUM_SIZE_OPTIONS.find(o => o.key === settings.numberSize)?.size ?? 0.75;
   const numFontSize = Math.max(10, cellSize * 0.32 * numSizeMultiplier / 0.75);
 
@@ -186,25 +275,24 @@ export default function GameScreen() {
   };
 
   // ====== Cell press handler ======
-  // ALL grid computation happens inside setGameState(prev => ...) to guarantee
-  // we always operate on the latest grid, never a stale closure.
   const handleCellPress = async (r: number, c: number) => {
-    if (animatingRef.current || !running) return;
+    if (animatingRef.current) return;
     const gs = gsRef.current;
-    if (!gs) return;
+    if (!gs || !gs.running) return;
     const cell = gs.grid[r][c];
+    const s = settingsRef.current;
 
     // Eraser mode
-    if (eraserMode) {
+    if (eraserModeRef.current) {
       if (cell.type < 0) return;
       setEraserMode(false);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      playErase();
+      s.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      playEraser();
       setGameState(prev => {
         if (!prev) return prev;
         const g = prev.grid;
         if (g[r][c].type < 0) return prev;
-        pushUndo(prev);
+
         const erased = eraseCells(g, [[r, c]]);
         const filled = applyGravityAndRefill(erased, prev.level);
         const ns = { ...prev, grid: filled, eraserCount: prev.eraserCount - 1 };
@@ -216,15 +304,15 @@ export default function GameScreen() {
     }
 
     // Henkou mode
-    if (henkouMode) {
+    if (henkouModeRef.current) {
       if (cell.type < 0 || cell.bomb) return;
       setHenkouMode(false);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      playErase();
+      s.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      playHenkou();
       const targetType = cell.type;
       setGameState(prev => {
         if (!prev) return prev;
-        pushUndo(prev);
+
         const converted = convertType(prev.grid, targetType);
         const ns = { ...prev, grid: converted, henkouCount: prev.henkouCount - 1 };
         gsRef.current = ns;
@@ -237,24 +325,28 @@ export default function GameScreen() {
     // Bomb click
     if (cell.bomb) {
       animatingRef.current = true;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      s.hapticsOn && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       playBomb();
 
-      if (settings.bombWaveEffect) {
+      if (s.bombWaveEffect) {
         const result = explodeBomb(gs.grid, r, c);
-        // Phase 1: Red flash
-        setExplodingCells(result.destroyed);
+        // Build distance map from bomb origin for cascading effect
+        const distMap = new Map<number, number>();
+        for (const key of result.destroyed) {
+          const cr = Math.floor(key / COLS);
+          const cc = key % COLS;
+          const dist = Math.abs(cr - r) + Math.abs(cc - c);
+          distMap.set(key, dist);
+        }
+        const maxDist = Math.max(...distMap.values(), 1);
+
+        // Cascade: set all cells with distance info, AnimatedCell handles delay
+        setExplodingCells(distMap);
         setExplodePhase(1);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        await delay(150);
-        // Phase 2: Orange
-        setExplodePhase(2);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        await delay(150);
-        // Phase 3: Yellow flash out
-        setExplodePhase(3);
-        await delay(200);
-        setExplodingCells(new Set());
+        s.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        const cascadeTime = maxDist * 12 + 25;
+        await delay(cascadeTime);
+        setExplodingCells(new Map());
         setExplodePhase(0);
       }
 
@@ -263,21 +355,26 @@ export default function GameScreen() {
         if (!prev) return prev;
         const g = prev.grid;
         if (!g[r][c].bomb) return prev;
-        pushUndo(prev);
+
         const result = explodeBomb(g, r, c);
         const erased = eraseBombCells(g, result.destroyed);
         const filled = applyGravityAndRefill(erased, prev.level);
         const bombScore = result.destroyed.size * 2;
-        showPopup(`🌋 +${bombScore}pts`);
-        const ns = {
+        let ns: GameState = {
           ...prev, grid: filled,
           score: prev.score + bombScore, erasedGroups: prev.erasedGroups + 1,
         };
+        const leveled = ns.erasedGroups >= groupsNeeded(ns.level);
+        ns = applyLevelUp(ns, false);
+        let popMsg = `🌋 +${bombScore}pts`;
+        if (leveled) popMsg += ` 🎉 LV${ns.level}!`;
+        deferPopup(popMsg, leveled ? 250 : 150);
         gsRef.current = ns;
-        processLevelUp(ns);
         checkAfterErase(ns);
         return ns;
       });
+      flushDeferredPopup();
+      flushDeferredLevelUp();
       animatingRef.current = false;
       return;
     }
@@ -285,148 +382,181 @@ export default function GameScreen() {
     // Normal cell click
     if (cell.type < 0) return;
 
-    // Pre-check from ref for early validation (highlight / reject)
+    // Pre-check from ref for early validation
     const preGroup = getGroup(gs.grid, r, c);
-    const required = minGroupSize(cell.type);
+    if (preGroup.length < minGroupSize(cell.type)) return;
 
-    if (preGroup.length < required) {
-      const hl = new Set(preGroup.map(([gr, gc]) => gr * COLS + gc));
-      setHighlightCells(hl);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      playTick();
-      setTimeout(() => setHighlightCells(new Set()), 400);
-      return;
-    }
-
-    // Show highlight
+    // Erase immediately - grid update first, then feedback
     animatingRef.current = true;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    playErase();
-    const hl = new Set(preGroup.map(([gr, gc]) => gr * COLS + gc));
-    setHighlightCells(hl);
-    await delay(250);
-    setHighlightCells(new Set());
-
-    // Erase: re-find group from prev.grid inside setState to guarantee correctness
     setGameState(prev => {
       if (!prev) return prev;
       const g = prev.grid;
-      if (g[r][c].type < 0) return prev; // cell already gone
-      const group = getGroup(g, r, c);
+      if (g[r][c].type < 0) return prev;
+      // Re-use preGroup if grid unchanged, otherwise re-find
+      const group = g === gs.grid ? preGroup : getGroup(g, r, c);
       const cellType = g[r][c].type;
       if (group.length < minGroupSize(cellType)) return prev;
-      pushUndo(prev);
       const erased = eraseCells(g, group);
       const filled = applyGravityAndRefill(erased, prev.level);
-      const pts = calcScore(group.length, cellType);
-      showPopup(pts >= 25 ? `+${pts}pts ✨` : `+${pts}pts`);
-      const ns = {
+      const result = calcScore(group.length, cellType, prev.level);
+      const pts = result.pts;
+      const bonus = result.bonus;
+      let ns: GameState = {
         ...prev, grid: filled,
-        score: prev.score + pts, erasedGroups: prev.erasedGroups + 1,
+        score: (typeof prev.score === 'number' ? prev.score : 0) + pts,
+        erasedGroups: prev.erasedGroups + 1,
       };
+      const leveled = ns.erasedGroups >= groupsNeeded(ns.level);
+      // Build popup message: score + bonus + level up combined
+      let popMsg = `+${pts}pts`;
+      if (bonus === 'bonus') { popMsg += ' ✨ ボーナス!'; playBonus(); }
+      ns = applyLevelUp(ns, false); // don't show popup inside
+      if (leveled) popMsg += ` 🎉 LV${ns.level}!`;
+      deferPopup(popMsg, leveled ? 250 : 150);
       gsRef.current = ns;
-      processLevelUp(ns);
       checkAfterErase(ns);
       return ns;
     });
     animatingRef.current = false;
+    flushDeferredPopup();
+    flushDeferredLevelUp();
+    // Feedback after state update (non-blocking)
+    playErase();
+    s.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
+  cellPressRef.current = handleCellPress;
 
-  const processLevelUp = (state: GameState) => {
+  // Apply level up directly to state (called inside setGameState callbacks)
+  // All side effects are deferred to avoid setState during render
+  const applyLevelUp = (state: GameState, showMsg = true): GameState => {
     const result = checkLevelUp(state);
-    if (!result.leveled) return;
+    if (!result.leveled) return state;
 
-    const updates: Partial<GameState> = { level: result.newLevel, erasedGroups: 0 };
-    if (result.earnedEraser) updates.eraserCount = (state.eraserCount || 0) + 1;
-    if (result.earnedShuffle) updates.shuffleCount = (state.shuffleCount || 0) + 1;
-    if (result.earnedHenkou) updates.henkouCount = (state.henkouCount || 0) + 1;
+    // Defer dots flash (will be flushed after setGameState)
+    deferredLevelUpRef.current.dotsFlash = true;
 
-    if (result.newTypes.length > 0) {
-      const announced = [...state.announcedTypes];
-      for (const t of result.newTypes) {
-        if (!announced.includes(t)) {
-          announced.push(t);
-          setTimeout(() => setCharPopup(t), 500);
-        }
-      }
-      updates.announcedTypes = announced;
+    let ns = { ...state, level: result.newLevel, erasedGroups: 0 };
+    if (result.earnedEraser) ns.eraserCount = (state.eraserCount || 0) + 1;
+    if (result.earnedShuffle) ns.shuffleCount = (state.shuffleCount || 0) + 1;
+    if (result.earnedHenkou) ns.henkouCount = (state.henkouCount || 0) + 1;
+
+    if (showMsg) {
+      let msg = `🎉 LV${result.newLevel}!`;
+      const items: string[] = [];
+      if (result.earnedEraser) items.push('DEL×1');
+      if (result.earnedShuffle) items.push('MIX×1');
+      if (result.earnedHenkou) items.push('CHG×1');
+      if (items.length > 0) msg += ` ${items.join(' ')}`;
+      deferPopup(msg, 250);
     }
 
-    let msg = `🎉 LV${result.newLevel}!`;
-    const items: string[] = [];
-    if (result.earnedEraser) items.push('消×1');
-    if (result.earnedShuffle) items.push('混×1');
-    if (result.earnedHenkou) items.push('変×1');
-    if (items.length > 0) msg += ` ${items.join(' ')}`;
-    showPopup(msg, 2000);
-    setGameState(prev => {
-      if (!prev) return prev;
-      const ns = { ...prev, ...updates };
-      gsRef.current = ns;
-      return ns;
-    });
+    // Defer new dino popup
+    const unannounced = result.newTypes.filter(t => !ns.announcedTypes.includes(t));
+    if (unannounced.length > 0) {
+      ns = { ...ns, announcedTypes: [...ns.announcedTypes, ...unannounced] };
+      deferredLevelUpRef.current.charPopup = unannounced[0];
+      deferredLevelUpRef.current.pageIndex = Math.floor(unannounced[0] / 5);
+    }
+
+    return ns;
+  };
+
+  const flushDeferredLevelUp = () => {
+    const d = deferredLevelUpRef.current;
+    if (d.dotsFlash) {
+      setDotsFlash(true);
+      if (dotsFlashTimer.current) clearTimeout(dotsFlashTimer.current);
+      dotsFlashTimer.current = setTimeout(() => setDotsFlash(false), 500);
+      d.dotsFlash = false;
+    }
+    if (d.charPopup !== null) {
+      const newType = d.charPopup;
+      const pageIndex = d.pageIndex;
+      d.charPopup = null;
+      if (levelUpTimer.current) clearTimeout(levelUpTimer.current);
+      levelUpTimer.current = setTimeout(() => {
+        setCharPopup(newType);
+        footerListRef.current?.scrollToOffset({ offset: pageIndex * gridMaxWidth, animated: true });
+      }, 400);
+    }
   };
 
   const checkAfterErase = (state: GameState) => {
-    setTimeout(() => {
-      if (!hasValidMoves(state.grid)) {
-        if (state.eraserCount > 0) {
+    // Extract only needed values to avoid capturing entire state in closure
+    const grid = state.grid;
+    const eraserCnt = state.eraserCount;
+    const shuffleCnt = state.shuffleCount;
+    const henkouCnt = state.henkouCount;
+    // Run after render completes so UI updates first
+    if (checkEraseTimer.current) clearTimeout(checkEraseTimer.current);
+    checkEraseTimer.current = setTimeout(() => {
+      if (!hasValidMoves(grid)) {
+        if (eraserCnt > 0) {
           setFlashButton('eraser');
-          setTimeout(() => setFlashButton(null), 3000);
-        } else if (state.shuffleCount > 0) {
+          if (flashTimer.current) clearTimeout(flashTimer.current);
+          flashTimer.current = setTimeout(() => setFlashButton(null), 3000);
+        } else if (shuffleCnt > 0) {
           setFlashButton('shuffle');
-          setTimeout(() => setFlashButton(null), 3000);
-        } else if (state.henkouCount > 0) {
+          if (flashTimer.current) clearTimeout(flashTimer.current);
+          flashTimer.current = setTimeout(() => setFlashButton(null), 3000);
+        } else if (henkouCnt > 0) {
           setFlashButton('henkou');
-          setTimeout(() => setFlashButton(null), 3000);
+          if (flashTimer.current) clearTimeout(flashTimer.current);
+          flashTimer.current = setTimeout(() => setFlashButton(null), 3000);
         } else {
           handleGameOver(state);
         }
       }
-    }, 200);
+    }, 0);
   };
 
   const handleGameOver = async (state: GameState) => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    settings.hapticsOn && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     playGameOver();
     await stopBGM();
     updateState({ running: false });
+    // Force save before clearing
+    if (saveTimer.current) clearTimeout(saveTimer.current);
     await clearGameState();
     await saveToRanking(state.score, state.level);
     // Submit to global ranking if player name is set
     if (settings.playerName) {
-      submitGlobalScore(settings.playerName, state.score, state.level);
+      await submitGlobalScore(settings.playerName, state.score, state.level);
+      setGameOverVisible(true);
+    } else {
+      // No name: show name prompt first
+      pendingScoreRef.current = { score: state.score, level: state.level };
+      setGameOverNameInput('');
+      setNamePromptVisible(true);
     }
-    setGameOverVisible(true);
     showPopup('GAME OVER', 3000);
+  };
+
+  const submitNameAndScore = async (name: string) => {
+    setNamePromptVisible(false);
+    if (name && pendingScoreRef.current) {
+      updateSettings({ playerName: name });
+      setNameInput(name);
+      await submitGlobalScore(name, pendingScoreRef.current.score, pendingScoreRef.current.level);
+    }
+    pendingScoreRef.current = null;
+    setGameOverVisible(true);
   };
 
   const handleRestart = async () => {
     setGameOverVisible(false);
     const initial = createInitialState();
+    gsRef.current = initial;
     setGameState(initial);
+    animatingRef.current = false;
     showPopup('ゲームスタート！');
     if (settings.bgmOn) { try { await startBGM(); } catch {} }
   };
 
-  const pushUndo = (state: GameState) => {
-    undoState.current = state;
-    setCanUndo(true);
-  };
-
-  const handleUndo = () => {
-    if (!undoState.current || animatingRef.current) return;
-    const prev = undoState.current;
-    undoState.current = null;
-    gsRef.current = prev;
-    setGameState(prev);
-    setCanUndo(false);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    showPopup('↩ 戻しました');
-  };
 
   const handleRetire = () => {
-    Alert.alert('リタイア', 'ゲームを終了しますか？スコアは記録されます。', [
+    setMenuVisible(false);
+    Alert.alert('リタイア', '本当にリタイアしますか？', [
       { text: 'キャンセル', style: 'cancel' },
       { text: 'リタイア', style: 'destructive', onPress: () => handleGameOver(gameState) },
     ]);
@@ -434,9 +564,16 @@ export default function GameScreen() {
 
   const handleShuffle = () => {
     if (shuffleCount <= 0 || animatingRef.current) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    const shuffled = shuffleGrid(grid);
-    setGameState(prev => prev ? { ...prev, grid: shuffled, shuffleCount: prev.shuffleCount - 1 } : prev);
+    settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    playShuffle();
+    setGameState(prev => {
+      if (!prev) return prev;
+      const shuffled = shuffleGrid(prev.grid);
+      const ns = { ...prev, grid: shuffled, shuffleCount: prev.shuffleCount - 1 };
+      gsRef.current = ns;
+      checkAfterErase(ns);
+      return ns;
+    });
     showPopup('シャッフル！');
   };
 
@@ -444,14 +581,14 @@ export default function GameScreen() {
     if (eraserCount <= 0 || animatingRef.current) return;
     setHenkouMode(false);
     setEraserMode(!eraserMode);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const handleHenkou = () => {
     if (henkouCount <= 0 || animatingRef.current) return;
     setEraserMode(false);
     setHenkouMode(!henkouMode);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const handleHint = () => {
@@ -460,26 +597,45 @@ export default function GameScreen() {
       for (let c = 0; c < COLS; c++) {
         if (grid[r][c].bomb) {
           setHighlightCells(new Set([r * COLS + c]));
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          setTimeout(() => setHighlightCells(new Set()), 5000);
-          showPopup('🌋 ボルケーノをタップ！');
+          settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          if (hintTimer.current) clearTimeout(hintTimer.current);
+          hintTimer.current = setTimeout(() => setHighlightCells(new Set()), 5000);
+          showPopup('🌋 ボルケーノをタップ！', 2000);
           return;
         }
         if (grid[r][c].type < 0) continue;
         const group = getGroup(grid, r, c);
         if (group.length >= minGroupSize(grid[r][c].type)) {
           setHighlightCells(new Set(group.map(([gr, gc]) => gr * COLS + gc)));
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          setTimeout(() => setHighlightCells(new Set()), 5000);
-          showPopup(`${DINO_NAMES[grid[r][c].type]}を${group.length}個消せる！`);
+          settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          if (hintTimer.current) clearTimeout(hintTimer.current);
+          hintTimer.current = setTimeout(() => setHighlightCells(new Set()), 5000);
+          showPopup(`${DINO_NAMES[grid[r][c].type]}を${group.length}個消せる！`, 2000);
           return;
         }
       }
     }
     // No valid moves found
     if (eraserCount > 0 || shuffleCount > 0 || henkouCount > 0) {
-      showPopup('アイテムを使おう！');
+      showPopup('アイテムを使おう！', 2000);
     }
+  };
+
+  const handleExchange = () => {
+    if (eraserCount < 10) return;
+    setExchangeVisible(true);
+  };
+
+  const confirmExchange = () => {
+    setExchangeVisible(false);
+    setGameState(prev => {
+      if (!prev || prev.eraserCount < 10) return prev;
+      const ns = { ...prev, eraserCount: prev.eraserCount - 10, henkouCount: prev.henkouCount + 1 };
+      gsRef.current = ns;
+      return ns;
+    });
+    settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    showPopup('DEL×10 → CHG×1 交換完了！', 200);
   };
 
   const handleExit = () => {
@@ -491,166 +647,147 @@ export default function GameScreen() {
 
   // ====== Render ======
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <ImageBackground source={BG_IMAGE} style={styles.screen} contentFit="cover">
       <View style={{ paddingTop: STATUS_BAR_HEIGHT, flex: 1 }}>
         {/* Header */}
         <View style={[styles.headerCard, { marginHorizontal: horizontalPadding }]}>
-          {/* Row 1: Title + nav buttons */}
-          <View style={styles.headerRow}>
-            <View style={styles.headerTitleWrap}>
-              <Text style={styles.headerTitle}>🦕 恐竜けし</Text>
-            </View>
-            <TouchableOpacity style={[styles.smallBtn, styles.smallBtnOutline]} onPress={() => setRulesVisible(true)}>
-              <Text style={[styles.smallBtnText, styles.smallBtnTextOutline]}>？</Text>
+          {/* Row 1: Navigation */}
+          <View style={styles.navRow}>
+            <TouchableOpacity style={styles.navIconBtn} onPress={() => setMenuVisible(true)}>
+              <Text style={styles.navIconText}>≡</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.smallBtn, styles.smallBtnOutline]} onPress={() => {
-              import('../game/storage').then(m => m.loadRankings()).then(r => { setRankings(r); setRankingVisible(true); });
+            <TouchableOpacity style={styles.navIconBtn} onPress={async () => {
+              const r = await loadRankings();
+              setRankings(r);
+              setRankTab('local');
+              setRankingVisible(true);
             }}>
-              <Text style={[styles.smallBtnText, styles.smallBtnTextOutline]}>ランキング</Text>
+              <Text style={styles.navIconText}>👑</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.smallBtn, styles.smallBtnOutline]} onPress={() => setSettingsVisible(true)}>
-              <Text style={[styles.smallBtnText, styles.smallBtnTextOutline]}>設定</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.smallBtn, styles.smallBtnGhost]} onPress={handleExit}>
-              <Text style={[styles.smallBtnText, styles.smallBtnTextGhost]}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Row 2: Action + item buttons */}
-          <View style={styles.headerRowWrap}>
-            <TouchableOpacity style={[styles.actionBtn, styles.retireBtn]} onPress={handleRetire}>
-              <Text style={styles.actionBtnText}>リタイア</Text>
-            </TouchableOpacity>
+            <View style={styles.navCenter}>
+              <View style={styles.statusLv}>
+                <Text style={styles.statusLvLabel}>LV</Text>
+                <Text style={[styles.statusLvValue, level >= 1000 ? { fontSize: 11 } : level >= 100 ? { fontSize: 14 } : null]}>{level}</Text>
+              </View>
+              <View style={styles.dotsRow}>
+                {Array.from({ length: 10 }, (_, i) => {
+                  const filled = dotsFlash ? true : i < erasedGroups;
+                  const flash = dotsFlash;
+                  return (
+                    <View
+                      key={i}
+                      style={[
+                        styles.dot,
+                        filled
+                          ? (flash ? styles.dotFlash : styles.dotFilled)
+                          : styles.dotEmpty,
+                      ]}
+                    />
+                  );
+                })}
+              </View>
+              <View style={styles.statusScore}>
+                <Text style={styles.scoreLabel}>SCORE</Text>
+                <Text style={styles.scoreValue}>{formatScore(score)}</Text>
+              </View>
+            </View>
             <TouchableOpacity style={[styles.actionBtn, styles.hintBtn]} onPress={handleHint}>
               <Text style={styles.actionBtnText}>ヒント</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.undoBtn, !canUndo && styles.undoBtnDisabled]}
-              onPress={handleUndo}
-              disabled={!canUndo}
-            >
-              <Text style={[styles.actionBtnText, !canUndo && { opacity: 0.4 }]}>↩戻</Text>
-            </TouchableOpacity>
-            <View style={styles.itemsGroup}>
-              {[
-                { key: 'eraser', label: '消', count: eraserCount, mode: eraserMode, handler: handleEraser },
-                { key: 'shuffle', label: '混', count: shuffleCount, mode: false, handler: handleShuffle },
-                { key: 'henkou', label: '変', count: henkouCount, mode: henkouMode, handler: handleHenkou },
-              ].map(item => (
-                <TouchableOpacity
-                  key={item.key}
-                  style={[
-                    styles.itemBtn,
-                    item.count > 0 ? styles.itemBtnActive : styles.itemBtnDisabled,
-                    item.mode && styles.itemBtnSelected,
-                    flashButton === item.key && styles.itemBtnFlash,
-                  ]}
-                  onPress={item.handler}
-                >
-                  <Text style={[styles.itemBtnText, item.count > 0 ? styles.itemBtnTextActive : styles.itemBtnTextDisabled]}>
-                    {item.label}
-                  </Text>
-                  {item.count > 0 && <Text style={styles.itemCount}>{item.count}</Text>}
-                </TouchableOpacity>
-              ))}
-            </View>
           </View>
 
-          <View style={styles.statusRow}>
-            <View style={styles.statusLv}>
-              <Text style={styles.statusLvLabel}>LV</Text>
-              <Text style={styles.statusLvValue}>{level}</Text>
-            </View>
-            <View style={styles.statusProgress}>
-              <View style={styles.progressBarTrack}>
-                <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
-              </View>
-              <Text style={styles.progressText}>{erasedGroups}/{needed}</Text>
-            </View>
-            <View style={styles.statusScore}>
-              <Text style={styles.scoreLabel}>SCORE</Text>
-              <Text style={styles.scoreValue}>{formatScore(score)}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Mode indicator - always takes space to prevent layout shift */}
-        <View style={[styles.modeIndicator, !(eraserMode || henkouMode) && styles.modeHidden]}>
-          {(eraserMode || henkouMode) ? (
-            <>
-              <Text style={styles.modeText}>
-                {eraserMode ? '🔴 消したいセルをタップ' : '🟡 変換する恐竜をタップ'}
-              </Text>
-              <TouchableOpacity onPress={() => { setEraserMode(false); setHenkouMode(false); }}>
-                <Text style={styles.modeCancelText}>キャンセル</Text>
+          {/* Row 2: Items */}
+          <View style={styles.itemsRow}>
+            {[
+              { key: 'eraser', label: '🗑 DEL', count: eraserCount, mode: eraserMode, handler: handleEraser },
+              { key: 'shuffle', label: '🔀 MIX', count: shuffleCount, mode: false, handler: handleShuffle },
+              { key: 'henkou', label: '🔄 CHG', count: henkouCount, mode: henkouMode, handler: handleHenkou },
+            ].map(item => (
+              <TouchableOpacity
+                key={item.key}
+                style={[
+                  styles.itemBtn,
+                  item.count > 0 ? styles.itemBtnActive : styles.itemBtnDisabled,
+                  item.mode && styles.itemBtnSelected,
+                  flashButton === item.key && styles.itemBtnFlash,
+                ]}
+                onPress={item.handler}
+              >
+                <Text style={[styles.itemBtnText, item.count > 0 ? styles.itemBtnTextActive : styles.itemBtnTextDisabled]}>
+                  {item.label}
+                </Text>
+                {item.count > 0 && <Text style={styles.itemCount}>{item.count}</Text>}
               </TouchableOpacity>
-            </>
-          ) : (
-            <Text style={styles.modeTextPlaceholder}> </Text>
-          )}
+            ))}
+            <Animated.View style={{ transform: [{ scale: exchangeAnim }] }}>
+              <TouchableOpacity
+                style={[styles.exchangeBtn, eraserCount >= 10 ? styles.exchangeBtnReady : styles.exchangeBtnLocked]}
+                onPress={handleExchange}
+                disabled={eraserCount < 10}
+              >
+                <Text style={[styles.exchangeBtnText, eraserCount >= 10 ? styles.exchangeBtnTextReady : styles.exchangeBtnTextLocked]}>
+                  {eraserCount >= 10 ? '✨' : '🔒'} 交換 {Math.min(eraserCount, 10)}/10
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
         </View>
+
+        {/* Info bar: isolated component with its own state */}
+        <PopupBar
+          setterRef={popupSetterRef}
+          eraserMode={eraserMode}
+          henkouMode={henkouMode}
+          onCancelMode={() => { setEraserMode(false); setHenkouMode(false); }}
+          styles={styles}
+        />
 
         {/* Board */}
         <View style={styles.centerArea}>
           <View style={[styles.boardWrap, { width: gridMaxWidth }]}>
             <View style={[styles.board, { padding: boardPadding, borderWidth: boardBorder }]}>
-              {grid.map((row, r) =>
-                row.map((cell, c) => {
-                  const key = r * COLS + c;
-                  const isHighlight = highlightCells.has(key);
-                  const isExploding = explodingCells.has(key);
-                  const isEmpty = cell.type < 0;
-
-                  return (
-                    <TouchableOpacity
-                      key={`${key}-${cell.type}-${cell.bomb}`}
-                      activeOpacity={0.75}
-                      onPress={() => handleCellPress(r, c)}
-                      style={[
-                        styles.cell,
-                        {
-                          width: cellSize,
-                          height: cellSize,
-                          marginRight: c === COLS - 1 ? 0 : cellGap,
-                          marginBottom: r === ROWS - 1 ? 0 : cellGap,
-                        },
-                        isEmpty && styles.cellEmpty,
-                        cell.bomb && styles.cellBomb,
-                        isHighlight && !cell.bomb && styles.cellHighlight,
-                        isHighlight && cell.bomb && styles.cellHighlightBomb,
-                        isExploding && explodePhase === 1 && styles.cellExplodeRed,
-                        isExploding && explodePhase === 2 && styles.cellExplodeOrange,
-                        isExploding && explodePhase === 3 && styles.cellExplodeYellow,
-                        (eraserMode || henkouMode) && !isEmpty && styles.cellSelectMode,
-                      ]}
-                    >
-                      {!isEmpty && !cell.bomb && (
-                        <>
-                          <Image source={DINO_SOURCES[cell.type]} style={styles.cellImage} contentFit="cover" />
-                          <Text style={[styles.cellNum, { fontSize: numFontSize }]}>{cell.type + 1}</Text>
-                        </>
-                      )}
-                      {cell.bomb && <Text style={[styles.bombEmoji, { fontSize: cellSize * 0.6 }]}>🌋</Text>}
-                    </TouchableOpacity>
-                  );
-                })
-              )}
+              <GameBoard
+                grid={grid}
+                cellSize={cellSize}
+                cellGap={cellGap}
+                numFontSize={numFontSize}
+                dropAnimation={settings.dropAnimation}
+                highlightCells={highlightCellsRef.current}
+                explodingCells={explodingCellsRef.current}
+                explodePhase={explodePhaseRef.current}
+                isSelectMode={eraserMode || henkouMode}
+                onCellPress={stableCellPress}
+              />
             </View>
           </View>
         </View>
 
-        {/* Footer: dino panel */}
+        {/* Footer: dino panel - horizontal paging, 5 per page */}
         <View style={[styles.footerPanel, { marginHorizontal: horizontalPadding }]}>
           <View style={styles.footerLabelRow}>
             <Text style={styles.footerLabel}>登場キャラクター</Text>
           </View>
-          <View style={styles.footerGrid}>
-            {DINO_SOURCES.map((src, i) => {
+          <FlatList
+            ref={footerListRef}
+            data={DINO_SOURCES}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(_, i) => String(i)}
+            style={{ width: gridMaxWidth }}
+            contentContainerStyle={styles.footerScroll}
+            snapToInterval={gridMaxWidth}
+            initialNumToRender={5}
+            maxToRenderPerBatch={5}
+            windowSize={2}
+            removeClippedSubviews
+            decelerationRate="fast"
+            renderItem={({ item: src, index: i }) => {
               const unlocked = level >= DINO_UNLOCK_LV[i];
               return (
                 <TouchableOpacity
-                  key={i}
-                  style={styles.footerIconWrap}
+                  style={[styles.footerIconWrap, { width: gridMaxWidth / 5 }]}
                   activeOpacity={0.7}
                   onPress={() => unlocked && setDinoInfoPopup(i)}
                 >
@@ -663,22 +800,77 @@ export default function GameScreen() {
                   </View>
                 </TouchableOpacity>
               );
-            })}
-          </View>
+            }}
+          />
         </View>
+
+        {/* Banner ad is now in GlobalBanner (root layout) */}
       </View>
 
-      {/* Popup */}
-      {popupText && (
-        <View style={styles.popupOverlay} pointerEvents="none">
-          <View style={styles.popupBox}>
-            <Text style={styles.popupBoxText}>{popupText}</Text>
+      {/* Hamburger Menu */}
+      {menuVisible && <Modal visible={menuVisible} transparent animationType="fade">
+        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
+          <View style={styles.menuPanel}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setRulesVisible(true); }}>
+              <Text style={styles.menuItemText}>📖 遊び方</Text>
+            </TouchableOpacity>
+            <View style={styles.menuDivider} />
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setSettingsVisible(true); }}>
+              <Text style={styles.menuItemText}>⚙ 設定</Text>
+            </TouchableOpacity>
+            <View style={styles.menuDivider} />
+            <TouchableOpacity style={styles.menuItem} onPress={handleRetire}>
+              <Text style={[styles.menuItemText, styles.menuItemDanger]}>🚪 リタイア</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>}
+
+      {/* Name Prompt (on game over without player name) */}
+      {namePromptVisible && <Modal visible={namePromptVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={{ fontSize: 32 }}>🦕</Text>
+            <Text style={styles.modalTitle}>プレイヤー名を登録</Text>
+            <Text style={{ fontSize: 13, color: '#6b7280', textAlign: 'center' }}>
+              グローバルランキングに参加できます
+            </Text>
+            <TextInput
+              style={{
+                width: '100%', marginTop: 8,
+                borderWidth: 2, borderColor: '#d1d5db', borderRadius: 10,
+                paddingHorizontal: 14, fontSize: 18, fontWeight: '700',
+                color: '#111827', backgroundColor: '#f9fafb',
+                minHeight: 50, textAlignVertical: 'center',
+              }}
+              value={gameOverNameInput}
+              onChangeText={setGameOverNameInput}
+              placeholder="名前を入力（最大12文字）"
+              placeholderTextColor="#9ca3af"
+              maxLength={12}
+              autoFocus
+            />
+            <Text style={{ fontSize: 11, color: '#9ca3af' }}>※後から設定画面で変更できます</Text>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8, width: '100%' }}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { flex: 1, backgroundColor: '#e5e7eb' }]}
+                onPress={() => submitNameAndScore('')}
+              >
+                <Text style={[styles.modalBtnText, { color: '#374151' }]}>スキップ</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { flex: 1 }]}
+                onPress={() => submitNameAndScore(gameOverNameInput.trim())}
+              >
+                <Text style={styles.modalBtnText}>決定！</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      )}
+      </Modal>}
 
       {/* Game Over */}
-      <Modal visible={gameOverVisible} transparent animationType="fade">
+      {gameOverVisible && <Modal visible={gameOverVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>GAME OVER</Text>
@@ -687,24 +879,70 @@ export default function GameScreen() {
             <TouchableOpacity style={styles.modalBtn} onPress={handleRestart}>
               <Text style={styles.modalBtnText}>もう一度プレイ</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#f59e0b' }]} onPress={async () => {
+              setGameOverVisible(false);
+              const initial = createInitialState();
+              gsRef.current = initial;
+              setGameState(initial);
+              animatingRef.current = false;
+              const r = await loadRankings();
+              setRankings(r);
+              setRankTab('local');
+              setRankingVisible(true);
+            }}>
+              <Text style={styles.modalBtnText}>🏆 ランキングを確認</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={[styles.modalBtn, styles.modalBtnSecondary]} onPress={async () => {
-              setGameOverVisible(false); await stopBGM(); router.back();
+              setGameOverVisible(false);
+              const initial = createInitialState();
+              gsRef.current = initial;
+              setGameState(initial);
+              animatingRef.current = false;
+              await stopBGM();
+              router.back();
             }}>
               <Text style={styles.modalBtnTextSecondary}>タイトルに戻る</Text>
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </Modal>}
+
+      {/* Exchange Confirm */}
+      {exchangeVisible && <Modal visible={exchangeVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>アイテム交換</Text>
+            <Text style={{ fontSize: 16, color: '#374151', textAlign: 'center', lineHeight: 24 }}>
+              🗑DEL ×10 → 🔄CHG ×1{'\n'}に交換しますか？
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8, width: '100%' }}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { flex: 1, backgroundColor: '#e5e7eb' }]}
+                onPress={() => setExchangeVisible(false)}
+              >
+                <Text style={[styles.modalBtnText, { color: '#374151' }]}>キャンセル</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { flex: 1 }]}
+                onPress={confirmExchange}
+              >
+                <Text style={styles.modalBtnText}>交換する</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>}
 
       {/* Character Popup */}
-      <Modal visible={charPopup !== null} transparent animationType="slide">
+      {charPopup !== null && <Modal visible={charPopup !== null} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             {charPopup !== null && (
               <>
-                <Text style={styles.charPopupTitle}>新しい仲間！</Text>
+                <Text style={styles.charPopupTitle}>新しいキャラクターが登場！</Text>
                 <Image source={DINO_SOURCES[charPopup]} style={styles.charPopupImage} contentFit="contain" />
                 <Text style={styles.charPopupName}>{DINO_NAMES[charPopup]} {DINO_EMOJI[charPopup]}</Text>
+                <Text style={styles.charPopupDesc}>LV{DINO_UNLOCK_LV[charPopup]}から盤面に出現するよ！</Text>
                 <Text style={styles.charPopupDesc}>数字: {charPopup + 1}（{charPopup + 1}個つながると消せる）</Text>
                 <TouchableOpacity style={styles.modalBtn} onPress={() => setCharPopup(null)}>
                   <Text style={styles.modalBtnText}>OK</Text>
@@ -713,62 +951,209 @@ export default function GameScreen() {
             )}
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* Rules */}
-      <Modal visible={rulesVisible} transparent animationType="fade">
+      {rulesVisible && <Modal visible={rulesVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { maxHeight: '80%' }]}>
-            <Text style={styles.modalTitle}>あそびかた</Text>
-            <ScrollView style={{ maxHeight: 400 }}>
-              {rulesPage === 0 && (
+          <View style={[styles.rkDialog, { maxHeight: '85%' }]}>
+            <View style={styles.rulesHeader}>
+              <Text style={styles.rulesHeaderText}>📖 遊び方</Text>
+              <TouchableOpacity style={styles.rulesCloseX} onPress={() => { setRulesVisible(false); setRulesPage(0); }}>
+                <Text style={styles.rulesCloseXText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ width: '100%', padding: 16 }} showsVerticalScrollIndicator={false}>
+
+              {rulesPage === 0 && (<View style={styles.rulesPage}>
+                <Text style={styles.rulesTitle}>① 基本ルール</Text>
                 <Text style={styles.rulesText}>
-                  🦕 <Text style={styles.rulesBold}>恐竜けし</Text>は、同じ恐竜をつなげて消すパズルゲームです。{'\n\n'}
-                  ● 各恐竜には数字が書かれています{'\n'}
-                  ● その数字の数だけつながっていると消せます{'\n'}
-                  ● 例: 「1」は1個で消せる、「3」は3個つながると消せる
+                  同じ種類の恐竜が「表示の数」と同じ数だけつながっているときにタップで消せます。
                 </Text>
-              )}
-              {rulesPage === 1 && (
+                <View style={styles.rulesTable}>
+                  <View style={styles.rulesTableHeader}>
+                    <Text style={[styles.rulesTableCell, { flex: 2 }]}>恐竜</Text>
+                    <Text style={styles.rulesTableCell}>表示</Text>
+                    <Text style={[styles.rulesTableCell, { flex: 2 }]}>必要な連結数</Text>
+                  </View>
+                  {[
+                    ['ティラノサウルス', '1', '1個（単体でOK）'],
+                    ['ブラキオサウルス', '2', '2個以上'],
+                    ['プテラノドン', '3', '3個以上'],
+                    ['トリケラトプス', '4', '4個以上'],
+                    ['ステゴサウルス', '5', '5個以上'],
+                    ['スピノサウルス', '6', '6個以上'],
+                  ].map(([name, num, req], i) => (
+                    <View key={i} style={styles.rulesTableRow}>
+                      <Text style={[styles.rulesTableCell, { flex: 2 }]}>{name}</Text>
+                      <Text style={[styles.rulesTableCell, styles.rulesBold]}>{num}</Text>
+                      <Text style={[styles.rulesTableCell, { flex: 2 }]}>{req}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.rulesTip}>💡 タップすると消えるグループが黄色でハイライトされます！</Text>
+              </View>)}
+
+              {rulesPage === 1 && (<View style={styles.rulesPage}>
+                <Text style={styles.rulesTitle}>② スコアのしくみ</Text>
                 <Text style={styles.rulesText}>
-                  🌋 <Text style={styles.rulesBold}>ボルケーノ（噴火）</Text>{'\n\n'}
-                  ● タップするとその行と列が全て消えます{'\n'}
-                  ● 範囲内に別の🌋があると連鎖爆発{'\n'}
-                  ● 盤面に同時に最大2個まで出現
+                  スコアは <Text style={styles.rulesBold}>消えた枚数 × 表示の数値</Text> で加算されます。
                 </Text>
-              )}
-              {rulesPage === 2 && (
+                <View style={styles.rulesExamples}>
+                  <Text style={styles.rulesExample}>例：表示「3」の恐竜を5個消す → 15点 + ボーナス<Text style={styles.rulesBold}>+50 = 65点</Text></Text>
+                  <Text style={styles.rulesExample}>例：表示「6」の恐竜を6個消す → <Text style={styles.rulesBold}>36点</Text>（ボーナスなし）</Text>
+                </View>
                 <Text style={styles.rulesText}>
-                  🔧 <Text style={styles.rulesBold}>アイテム</Text>{'\n\n'}
-                  【消】LV3〜 1マスだけ消せる{'\n'}
-                  【混】LV5〜 盤面をシャッフル{'\n'}
-                  【変】LV10〜 選んだ恐竜を基本種に変換
+                  グループが大きいほど、また表示数値が大きい恐竜ほど<Text style={styles.rulesBold}>高得点</Text>！
                 </Text>
-              )}
-              {rulesPage === 3 && (
+                <Text style={styles.rulesTip}>
+                  ✨ <Text style={styles.rulesBold}>ボーナス</Text>{'\n'}
+                  必要数の1.5倍以上つなげると<Text style={styles.rulesBold}>固定ボーナス</Text>加算！{'\n'}
+                  難しい恐竜ほど高ボーナス（+10〜+1500）{'\n\n'}
+                  📈 <Text style={styles.rulesBold}>レベル係数</Text>：LVが上がるほどスコアUP{'\n'}
+                  LV50で2倍、LV100で3倍！
+                </Text>
+                <Text style={styles.rulesTip}>
+                  💡 ティラノサウルス（表示1）は1個から消せるので詰まったときの救済にも！
+                </Text>
+              </View>)}
+
+              {rulesPage === 2 && (<View style={styles.rulesPage}>
+                <Text style={styles.rulesTitle}>③ 噴火 🌋</Text>
                 <Text style={styles.rulesText}>
-                  📈 <Text style={styles.rulesBold}>レベルアップ</Text>{'\n\n'}
-                  ● 一定数のグループを消すとレベルアップ{'\n'}
-                  ● レベルが上がると新しい恐竜が登場{'\n'}
-                  ● レベルアップでアイテムを獲得
+                  🌋をタップすると、その噴火がある<Text style={styles.rulesBold}>縦一列＋横一列</Text>を一気に消します。
                 </Text>
-              )}
-              {rulesPage === 4 && (
+                <View style={styles.rulesDiagram}>
+                  <Text style={styles.rulesDiagramText}>
+                    {'   ↑\n'}
+                    {'←🌋→\n'}
+                    {'   ↓'}
+                  </Text>
+                </View>
                 <Text style={styles.rulesText}>
-                  💀 <Text style={styles.rulesBold}>ゲームオーバー</Text>{'\n\n'}
-                  ● 消せるグループがなくアイテムもない場合{'\n'}
-                  ● ヒントボタンで消せる場所を確認できます
+                  🌋 隣の噴火に連鎖して一気に爆発することも！
                 </Text>
-              )}
+                <Text style={styles.rulesTip}>
+                  噴火はLV1〜3で多め、LV4以降は控えめに出現。盤上に最大2個。
+                </Text>
+              </View>)}
+
+              {rulesPage === 3 && (<View style={styles.rulesPage}>
+                <Text style={styles.rulesTitle}>④ レベルアップ＆特別ボタン</Text>
+                <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>10グループ</Text>消すごとにレベルアップ！新キャラクターが出現します。
+                </Text>
+                <View style={styles.rulesTable}>
+                  <View style={styles.rulesTableHeader}>
+                    <Text style={styles.rulesTableCell}>解放LV</Text>
+                    <Text style={styles.rulesTableCell}>ボタン</Text>
+                    <Text style={[styles.rulesTableCell, { flex: 3 }]}>効果</Text>
+                  </View>
+                  {[
+                    ['LV3〜', '🗑DEL', '好きな1マスを消去。LVアップごとに+1'],
+                    ['LV5〜', '🔀MIX', 'グリッド全体をシャッフル'],
+                    ['LV10〜', '🔄CHG', '1種類を基本6種のどれかに全変換'],
+                  ].map(([lv, btn, effect], i) => (
+                    <View key={i} style={styles.rulesTableRow}>
+                      <Text style={styles.rulesTableCell}>{lv}</Text>
+                      <Text style={[styles.rulesTableCell, styles.rulesBold]}>{btn}</Text>
+                      <Text style={[styles.rulesTableCell, { flex: 3 }]}>{effect}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.rulesTip}>
+                  💡 DEL・MIX・CHGが残っているとゲームオーバーを回避！{'\n'}
+                  ボタンが光ったら使いどき！{'\n'}
+                  🔁 DEL×10 → CHG×1 に交換も可能！
+                </Text>
+              </View>)}
+
+              {rulesPage === 4 && (<View style={styles.rulesPage}>
+                <Text style={styles.rulesTitle}>⑤ 新キャラクターの出現</Text>
+                <Text style={styles.rulesText}>
+                  レベルが上がると、より強力な新キャラクターが出現します。
+                </Text>
+                <View style={styles.rulesTable}>
+                  <View style={styles.rulesTableHeader}>
+                    <Text style={styles.rulesTableCell}>解放LV</Text>
+                    <Text style={[styles.rulesTableCell, { flex: 2 }]}>恐竜</Text>
+                    <Text style={styles.rulesTableCell}>表示</Text>
+                    <Text style={styles.rulesTableCell}>必要数</Text>
+                  </View>
+                  {[
+                    ['LV5', 'アロサウルス', '7', '7個'],
+                    ['LV10', 'パキケファロ', '8', '8個'],
+                    ['LV15', 'モササウルス', '9', '9個'],
+                    ['LV20', 'アンキロ', '10', '10個'],
+                    ['LV25', 'マイアサウラ', '11', '11個'],
+                    ['LV30', 'マンモス', '12', '12個'],
+                    ['LV35', 'ヒト', '13', '13個'],
+                  ].map(([lv, name, num, req], i) => (
+                    <View key={i} style={styles.rulesTableRow}>
+                      <Text style={styles.rulesTableCell}>{lv}</Text>
+                      <Text style={[styles.rulesTableCell, { flex: 2 }]}>{name}</Text>
+                      <Text style={[styles.rulesTableCell, styles.rulesBold]}>{num}</Text>
+                      <Text style={styles.rulesTableCell}>{req}</Text>
+                    </View>
+                  ))}
+                  <View style={[styles.rulesTableRow, { backgroundColor: '#fef3c7' }]}>
+                    <Text style={[styles.rulesTableCell, { flex: 1 }]}>LV40〜</Text>
+                    <Text style={[styles.rulesTableCell, { flex: 5, textAlign: 'center', fontStyle: 'italic', color: '#92400e' }]}>??? 何が出るかはお楽しみ！</Text>
+                  </View>
+                </View>
+                <Text style={styles.rulesTip}>
+                  ⚠️ 新種は連結数が多くて消しにくい分、高得点チャンス！{'\n'}
+                  🎁 大グループで消すと固定ボーナス加算！
+                </Text>
+              </View>)}
+
+              {rulesPage === 5 && (<View style={styles.rulesPage}>
+                <Text style={styles.rulesTitle}>📋 更新履歴</Text>
+                <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>v5.0.1</Text>（2026/03/25）{'\n'}
+                  ・新キャラ追加：マイアサウラ、ヤマタノオロチ（全19種）{'\n'}
+                  ・ランキング：デイリー/週間/月間の3タブに変更{'\n'}
+                  ・ランキング表示の不具合修正{'\n'}
+                  ・高レベル時のUI表示改善{'\n'}
+                  ・ゲームオーバー画面にランキング確認ボタン追加{'\n'}
+                  ・パフォーマンス改善（画像最適化・データ取得効率化）{'\n'}
+                  {'\n'}
+                  <Text style={styles.rulesBold}>v5.0.0</Text>（2026/03/24）{'\n'}
+                  ・広告非表示パック（アプリ内購入）{'\n'}
+                  ・アイテム交換機能（DEL×10→CHG×1）{'\n'}
+                  ・月間ランキング追加{'\n'}
+                  ・振動ON/OFF設定{'\n'}
+                  ・ゲームオーバー時の名前登録{'\n'}
+                  ・スコアバランス調整（固定ボーナス+レベル係数）{'\n'}
+                  ・キャラ出現バランス最適化{'\n'}
+                  ・パフォーマンス大幅改善{'\n'}
+                  ・表記変更（🗑DEL / 🔀MIX / 🔄CHG）
+                </Text>
+              </View>)}
+
             </ScrollView>
-            <View style={styles.rulesNav}>
+            <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 4 }}>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                {Array.from({ length: 6 }, (_, i) => (
+                  <TouchableOpacity key={i} onPress={() => setRulesPage(i)} hitSlop={8}>
+                    <View style={{
+                      width: rulesPage === i ? 10 : 8,
+                      height: rulesPage === i ? 10 : 8,
+                      borderRadius: 5,
+                      backgroundColor: rulesPage === i ? '#f59e0b' : '#d1d5db',
+                    }} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View style={[styles.rulesNav, { paddingHorizontal: 16, paddingBottom: 12 }]}>
               {rulesPage > 0 ? (
                 <TouchableOpacity onPress={() => setRulesPage(rulesPage - 1)}>
                   <Text style={styles.rulesNavText}>◀ 前へ</Text>
                 </TouchableOpacity>
               ) : <View />}
-              <Text style={styles.rulesPageNum}>{rulesPage + 1}/5</Text>
-              {rulesPage < 4 ? (
+              <Text style={styles.rulesPageNum}>{rulesPage + 1}/6</Text>
+              {rulesPage < 5 ? (
                 <TouchableOpacity onPress={() => setRulesPage(rulesPage + 1)}>
                   <Text style={styles.rulesNavText}>次へ ▶</Text>
                 </TouchableOpacity>
@@ -780,10 +1165,10 @@ export default function GameScreen() {
             </View>
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* Settings */}
-      <Modal visible={settingsVisible} transparent animationType="fade">
+      {settingsVisible && <Modal visible={settingsVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20 }}>
             <View style={styles.settingsCard}>
@@ -810,33 +1195,7 @@ export default function GameScreen() {
               </View>
               <View style={styles.settingDivider} />
 
-              {/* Effects */}
-              <View style={styles.settingSection}>
-                <Text style={styles.settingLabel}>✨ エフェクト</Text>
-                <View style={styles.settingSubRow}>
-                  <Text style={styles.settingSubLabel}>落下アニメ</Text>
-                  <TouchableOpacity
-                    style={[styles.toggleBtn, settings.dropAnimation ? styles.toggleOn : styles.toggleOff]}
-                    onPress={() => updateSettings({ dropAnimation: !settings.dropAnimation })}
-                  >
-                    <Text style={[styles.toggleText, settings.dropAnimation && styles.toggleTextOn]}>
-                      {settings.dropAnimation ? 'ON' : 'OFF'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.settingSubRow}>
-                  <Text style={styles.settingSubLabel}>火山エフェクト</Text>
-                  <TouchableOpacity
-                    style={[styles.toggleBtn, settings.bombWaveEffect ? styles.toggleOn : styles.toggleOff]}
-                    onPress={() => updateSettings({ bombWaveEffect: !settings.bombWaveEffect })}
-                  >
-                    <Text style={[styles.toggleText, settings.bombWaveEffect && styles.toggleTextOn]}>
-                      {settings.bombWaveEffect ? 'ON' : 'OFF'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <View style={styles.settingDivider} />
+              {/* Effects section removed - always ON */}
 
               {/* Number Size */}
               <View style={styles.settingSection}>
@@ -891,6 +1250,22 @@ export default function GameScreen() {
               </View>
               <View style={styles.settingDivider} />
 
+              {/* Haptics */}
+              <View style={styles.settingSection}>
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>📳 振動</Text>
+                  <TouchableOpacity
+                    style={[styles.toggleBtn, settings.hapticsOn ? styles.toggleOn : styles.toggleOff]}
+                    onPress={() => updateSettings({ hapticsOn: !settings.hapticsOn })}
+                  >
+                    <Text style={[styles.toggleText, settings.hapticsOn && styles.toggleTextOn]}>
+                      {settings.hapticsOn ? 'ON' : 'OFF'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={styles.settingDivider} />
+
               {/* Player Name */}
               <View style={styles.settingSection}>
                 <Text style={styles.settingLabel}>🏷 プレイヤー名</Text>
@@ -906,7 +1281,7 @@ export default function GameScreen() {
                     style={styles.nameSaveBtn}
                     onPress={() => {
                       updateSettings({ playerName: nameInput });
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      settings.hapticsOn && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     }}
                   >
                     <Text style={styles.nameSaveBtnText}>保存</Text>
@@ -915,16 +1290,56 @@ export default function GameScreen() {
                 <Text style={styles.nameHint}>現在: {settings.playerName || '未設定'}</Text>
               </View>
 
+              <View style={styles.settingDivider} />
+
+              {/* Ad & Purchase */}
+              <View style={styles.settingSection}>
+                <Text style={styles.settingLabel}>📢 広告</Text>
+                {adState.isAdRemoved ? (
+                  <Text style={[styles.settingSubLabel, { paddingVertical: 6 }]}>広告は削除済みです ✅</Text>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.nameSaveBtn, { marginTop: 6, alignSelf: 'flex-start' }]}
+                    onPress={adState.buyAdRemoval}
+                  >
+                    <Text style={styles.nameSaveBtnText}>広告を削除する</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={{ paddingVertical: 6 }}
+                  onPress={adState.restore}
+                >
+                  <Text style={[styles.settingSubLabel, { color: '#3b82f6', textDecorationLine: 'underline' }]}>
+                    購入を復元する
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Debug toggle - dev only */}
+                {__DEV__ && (
+                <View style={[styles.settingSubRow, { borderTopWidth: 1, borderTopColor: '#f3f4f6', marginTop: 6, paddingTop: 6 }]}>
+                  <Text style={[styles.settingSubLabel, { color: '#d1d5db' }]}>🛠 デバッグ</Text>
+                  <TouchableOpacity
+                    style={[styles.toggleBtn, !adState.isAdRemoved ? styles.toggleOn : styles.toggleOff]}
+                    onPress={() => adState.setAdRemoved(!adState.isAdRemoved)}
+                  >
+                    <Text style={[styles.toggleText, !adState.isAdRemoved && styles.toggleTextOn]}>
+                      {adState.isAdRemoved ? '広告OFF' : '広告ON'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                )}
+              </View>
+
               <TouchableOpacity style={styles.settingsCloseBtn} onPress={() => setSettingsVisible(false)}>
                 <Text style={styles.settingsCloseBtnText}>閉じる</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* Dino Info Popup */}
-      <Modal visible={dinoInfoPopup !== null} transparent animationType="fade">
+      {dinoInfoPopup !== null && <Modal visible={dinoInfoPopup !== null} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             {dinoInfoPopup !== null && (
@@ -944,24 +1359,30 @@ export default function GameScreen() {
             )}
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* Ranking */}
-      <Modal visible={rankingVisible} transparent animationType="fade">
+      {rankingVisible && <Modal visible={rankingVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { maxHeight: '80%' }]}>
-            <Text style={styles.modalTitle}>ランキング</Text>
+          <View style={[styles.rkDialog]}>
+            {/* Header */}
+            <View style={styles.rkHeader}>
+              <Text style={styles.rkHeaderText}>🏆 ランキング</Text>
+              <TouchableOpacity style={styles.rkCloseX} onPress={() => { setRankingVisible(false); setGlobalRankings([]); }}>
+                <Text style={styles.rkCloseXText}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
-            {/* Tab: Local / Global */}
-            <View style={styles.rankTabRow}>
+            {/* Tabs */}
+            <View style={styles.rkTabs}>
               <TouchableOpacity
-                style={[styles.rankTab, rankTab === 'local' && styles.rankTabActive]}
+                style={[styles.rkTab, rankTab === 'local' && styles.rkTabActive]}
                 onPress={() => setRankTab('local')}
               >
-                <Text style={[styles.rankTabText, rankTab === 'local' && styles.rankTabTextActive]}>ローカル</Text>
+                <Text style={[styles.rkTabText, rankTab === 'local' && styles.rkTabTextActive]}>📱 端末</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.rankTab, rankTab === 'global' && styles.rankTabActive]}
+                style={[styles.rkTab, rankTab === 'global' && styles.rkTabActive]}
                 onPress={async () => {
                   setRankTab('global');
                   setLoadingGlobal(true);
@@ -970,17 +1391,17 @@ export default function GameScreen() {
                   setLoadingGlobal(false);
                 }}
               >
-                <Text style={[styles.rankTabText, rankTab === 'global' && styles.rankTabTextActive]}>グローバル</Text>
+                <Text style={[styles.rkTabText, rankTab === 'global' && styles.rkTabTextActive]}>🌍 グローバル</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Global: Period filter */}
+            {/* Period sub-tabs (global only) */}
             {rankTab === 'global' && (
-              <View style={styles.rankPeriodRow}>
-                {(['daily', 'weekly', 'all'] as RankPeriod[]).map(p => (
+              <View style={styles.rkPeriodTabs}>
+                {(['daily', 'weekly', 'monthly'] as RankPeriod[]).map(p => (
                   <TouchableOpacity
                     key={p}
-                    style={[styles.rankPeriodBtn, rankPeriod === p && styles.rankPeriodBtnActive]}
+                    style={[styles.rkPeriodTab, rankPeriod === p && styles.rkPeriodTabActive]}
                     onPress={async () => {
                       setRankPeriod(p);
                       setLoadingGlobal(true);
@@ -989,60 +1410,77 @@ export default function GameScreen() {
                       setLoadingGlobal(false);
                     }}
                   >
-                    <Text style={[styles.rankPeriodText, rankPeriod === p && styles.rankPeriodTextActive]}>
-                      {p === 'daily' ? '今日' : p === 'weekly' ? '今週' : '全期間'}
+                    <Text style={[styles.rkPeriodText, rankPeriod === p && styles.rkPeriodTextActive]}>
+                      {p === 'daily' ? 'デイリー' : p === 'weekly' ? '週間' : '月間'}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
             )}
 
-            <ScrollView style={{ width: '100%' }}>
+            {/* Table */}
+            <ScrollView style={styles.rkBody}>
+              {/* Table header */}
+              <View style={styles.rkTh}>
+                <Text style={[styles.rkThCell, { width: 36 }]}>順位</Text>
+                <Text style={[styles.rkThCell, { width: 80 }]}>スコア</Text>
+                {rankTab === 'global' && <Text style={[styles.rkThCell, { flex: 1, paddingLeft: 8 }]} numberOfLines={1}>プレイヤー</Text>}
+                <Text style={[styles.rkThCell, { width: 50 }]}>LV</Text>
+                <Text style={[styles.rkThCell, { width: 72 }]}>日時</Text>
+              </View>
+
               {rankTab === 'local' ? (
                 rankings.length === 0 ? (
-                  <Text style={styles.rankEmpty}>まだ記録がありません</Text>
+                  <Text style={styles.rkEmpty}>まだ記録がありません</Text>
                 ) : (
                   rankings.map((entry, i) => (
-                    <View key={i} style={styles.rankRow}>
-                      <Text style={styles.rankNum}>{rankLabel(i)}</Text>
-                      <Text style={styles.rankScore}>{formatScore(entry.score)}pts</Text>
-                      <Text style={styles.rankLevel}>LV{entry.level}</Text>
-                      <Text style={styles.rankDate}>{entry.date}</Text>
+                    <View key={i} style={[styles.rkTd, i % 2 === 1 && styles.rkTdEven]}>
+                      <Text style={[styles.rkTdCell, { width: 36 }]}>{rankLabel(i)}</Text>
+                      <Text style={[styles.rkTdCell, { width: 80, textAlign: 'right', paddingRight: 8, fontWeight: '800' },
+                        entry.score >= 15000 && { fontSize: 15, fontWeight: '900', color: '#dc2626' },
+                        entry.score >= 10000 && entry.score < 15000 && { fontSize: 13, fontWeight: '900', color: '#d97706' },
+                      ]}>{formatScore(entry.score)}</Text>
+                      <Text style={[styles.rkTdCell, { width: 50 }]}>LV{entry.level}</Text>
+                      <Text style={[styles.rkTdCell, { flex: 1, textAlign: 'left', paddingLeft: 8, fontSize: 12 }]}>{entry.date}</Text>
                     </View>
                   ))
                 )
               ) : loadingGlobal ? (
-                <Text style={styles.rankEmpty}>読み込み中...</Text>
+                <Text style={styles.rkEmpty}>読み込み中...</Text>
               ) : globalRankings.length === 0 ? (
-                <Text style={styles.rankEmpty}>まだ記録がありません</Text>
+                <Text style={styles.rkEmpty}>まだ記録がありません</Text>
               ) : (
                 globalRankings.map((entry, i) => (
-                  <View key={i} style={styles.rankRow}>
-                    <Text style={styles.rankNum}>{rankLabel(i)}</Text>
-                    <Text style={styles.rankScore}>{formatScore(entry.score)}</Text>
-                    <Text style={styles.rankName} numberOfLines={1}>
-                      {entry.name}{entry.consecutiveDays >= 3 ? ' 🔥' : ''}
+                  <View key={i} style={[styles.rkTd, i % 2 === 1 && styles.rkTdEven]}>
+                    <Text style={[styles.rkTdCell, { width: 36 }]}>{rankLabel(i)}</Text>
+                    <Text style={[styles.rkTdCell, { width: 80, textAlign: 'right', paddingRight: 8, fontWeight: '800' },
+                      entry.score >= 15000 && { fontSize: 15, fontWeight: '900', color: '#dc2626' },
+                      entry.score >= 10000 && entry.score < 15000 && { fontSize: 13, fontWeight: '900', color: '#d97706' },
+                    ]}>{formatScore(entry.score)}</Text>
+                    <Text style={[styles.rkTdCell, { flex: 1, textAlign: 'left', paddingLeft: 8 }]} numberOfLines={1}>
+                      {entry.name || '???'}
                     </Text>
-                    <Text style={styles.rankLevel}>LV{entry.level}</Text>
-                    <Text style={styles.rankDate}>{entry.date}</Text>
+                    <Text style={[styles.rkTdCell, { width: 50 }]}>LV{entry.level}</Text>
+                    <Text style={[styles.rkTdCell, { width: 72, textAlign: 'right', fontSize: 12 }]}>{entry.date}</Text>
                   </View>
                 ))
               )}
             </ScrollView>
 
-            {rankTab === 'global' && !settings.playerName && (
-              <Text style={{ fontSize: 11, color: '#ef4444', fontWeight: '700', textAlign: 'center' }}>
-                設定でプレイヤー名を登録するとグローバルランキングに参加できます
-              </Text>
-            )}
-
-            <TouchableOpacity style={styles.modalBtn} onPress={() => setRankingVisible(false)}>
-              <Text style={styles.modalBtnText}>閉じる</Text>
-            </TouchableOpacity>
+            {/* Footer */}
+            <View style={styles.rkFooter}>
+              {rankTab === 'global' && !settings.playerName && (
+                <Text style={styles.rkWarning}>設定でプレイヤー名を登録すると参加できます</Text>
+              )}
+              <TouchableOpacity style={styles.rkCloseBtn} onPress={() => { setRankingVisible(false); setGlobalRankings([]); }}>
+                <Text style={styles.rkCloseBtnText}>閉じる</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </Modal>
+      </Modal>}
     </ImageBackground>
+    </GestureHandlerRootView>
   );
 }
 
@@ -1053,8 +1491,51 @@ function rankLabel(i: number): string {
   return `${i + 1}.`;
 }
 
-function formatScore(n: number): string {
-  return n.toLocaleString();
+// Isolated popup component - has its own state, doesn't trigger parent re-render
+function PopupBar({
+  setterRef,
+  eraserMode,
+  henkouMode,
+  onCancelMode,
+  styles: s,
+}: {
+  setterRef: React.MutableRefObject<(text: string | null) => void>;
+  eraserMode: boolean;
+  henkouMode: boolean;
+  onCancelMode: () => void;
+  styles: any;
+}) {
+  const [text, setText] = React.useState<string | null>(null);
+  setterRef.current = setText;
+
+  return (
+    <View style={[
+      s.modeIndicator,
+      text ? s.modePopup :
+      (eraserMode || henkouMode) ? undefined :
+      s.modeHidden,
+    ]}>
+      {text ? (
+        <Text style={s.popupInlineText}>{text}</Text>
+      ) : (eraserMode || henkouMode) ? (
+        <>
+          <Text style={s.modeText}>
+            {eraserMode ? '🔴 DEL: 消したいセルをタップ' : '🟡 CHG: 変換する恐竜をタップ'}
+          </Text>
+          <TouchableOpacity onPress={onCancelMode}>
+            <Text style={s.modeCancelText}>キャンセル</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <Text style={s.modeTextPlaceholder}> </Text>
+      )}
+    </View>
+  );
+}
+
+function formatScore(n: number | any): string {
+  const num = typeof n === 'number' ? n : Number(n) || 0;
+  return num.toLocaleString();
 }
 
 function delay(ms: number) {
@@ -1073,38 +1554,34 @@ const styles = StyleSheet.create({
   headerCard: {
     backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: 14, padding: 6, gap: 4,
   },
-  headerTitleWrap: {
-    backgroundColor: 'rgba(255,255,255,0.92)', paddingVertical: 4, paddingHorizontal: 12,
-    borderRadius: 22, borderWidth: 2, borderColor: '#d97706',
-  },
-  headerTitle: {
-    color: '#d97706', fontWeight: '900', fontSize: 16, letterSpacing: 1,
-  },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
-  headerRowWrap: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  smallBtn: { paddingVertical: 5, paddingHorizontal: 9, borderRadius: 999 },
-  smallBtnOutline: {
+  // Nav row (row 1)
+  navRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  navIconBtn: {
+    width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.92)', borderWidth: 2, borderColor: '#d97706',
   },
-  smallBtnText: { fontWeight: '900', fontSize: 12 },
-  smallBtnTextOutline: { color: '#d97706' },
-  smallBtnGhost: { marginLeft: 'auto', backgroundColor: 'rgba(255,255,255,0.15)' },
-  smallBtnTextGhost: { color: 'white' },
+  navIconText: { fontSize: 18, fontWeight: '900' },
+  navCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 1 },
+  dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
+  dot: { width: 10, height: 10, borderRadius: 2 },
+  dotFilled: { backgroundColor: '#F97316' },
+  dotEmpty: { backgroundColor: 'rgba(255,255,255,0.3)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.15)' },
+  dotFlash: { backgroundColor: '#FBBF24' },
+
+  // Items row (row 2)
+  itemsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+
 
   actionBtn: { borderRadius: 10, paddingVertical: 7, paddingHorizontal: 12 },
-  retireBtn: { backgroundColor: '#dc2626' },
   hintBtn: { backgroundColor: '#0891b2' },
-  undoBtn: { backgroundColor: '#7c3aed' },
-  undoBtnDisabled: { backgroundColor: '#6b7280', opacity: 0.5 },
   actionBtnText: { color: 'white', fontWeight: '900', fontSize: 13 },
 
-  itemsGroup: { flexDirection: 'row', gap: 6, marginLeft: 'auto' },
-  itemBtn: { width: 42, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  itemBtn: { flex: 1, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   itemCount: {
-    position: 'absolute', top: -5, right: -5,
-    backgroundColor: '#ef4444', color: '#fff', fontSize: 10,
-    fontWeight: '900', borderRadius: 8, minWidth: 16,
-    textAlign: 'center', paddingHorizontal: 3, overflow: 'hidden',
+    position: 'absolute', top: -8, right: -8,
+    backgroundColor: '#ef4444', color: '#fff', fontSize: 14,
+    fontWeight: '900', borderRadius: 11, minWidth: 22, height: 22,
+    lineHeight: 22, textAlign: 'center', paddingHorizontal: 4, overflow: 'hidden',
   },
   itemBtnDisabled: { backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 2, borderColor: 'rgba(0,0,0,0.15)' },
   itemBtnActive: { backgroundColor: '#f59e0b', borderWidth: 2, borderColor: '#d97706' },
@@ -1114,39 +1591,58 @@ const styles = StyleSheet.create({
   itemBtnTextDisabled: { color: 'rgba(0,0,0,0.35)' },
   itemBtnTextActive: { color: '#fff' },
 
-  // Status
-  statusRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.4)', borderRadius: 10,
-    paddingVertical: 6, paddingHorizontal: 8,
+  // Exchange button (new spec)
+  exchangeBtn: {
+    height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 10,
   },
+  exchangeBtnReady: { backgroundColor: '#059669', borderWidth: 2, borderColor: '#047857' },
+  exchangeBtnLocked: { backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 2, borderColor: 'rgba(0,0,0,0.15)' },
+  exchangeBtnText: { fontWeight: '900', fontSize: 12 },
+  exchangeBtnTextReady: { color: '#fff' },
+  exchangeBtnTextLocked: { color: 'rgba(255,255,255,0.5)' },
+
+  // Hamburger menu
+  menuOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 36) + 50 : 94,
+    paddingHorizontal: 12,
+  },
+  menuPanel: {
+    backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden',
+    width: 200, elevation: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 12,
+  },
+  menuItem: { paddingVertical: 14, paddingHorizontal: 18 },
+  menuItemText: { fontSize: 15, fontWeight: '800', color: '#374151' },
+  menuItemDanger: { color: '#dc2626' },
+  menuDivider: { height: 1, backgroundColor: '#f0f0f0', marginHorizontal: 12 },
+
+  // Status
   statusLv: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
   statusLvLabel: { color: 'rgba(0,0,0,0.65)', fontSize: 11, fontWeight: '900' },
   statusLvValue: { color: '#111827', fontSize: 17, fontWeight: '900' },
-  statusProgress: { flex: 1, gap: 4, alignItems: 'center' },
-  progressBarTrack: {
-    width: '100%', height: 8, backgroundColor: 'rgba(0,0,0,0.18)',
-    borderRadius: 999, overflow: 'hidden',
-  },
-  progressBarFill: { height: '100%', backgroundColor: '#f59e0b', borderRadius: 999 },
-  progressText: { fontSize: 11, fontWeight: '800', color: 'rgba(0,0,0,0.7)' },
-  statusScore: { alignItems: 'flex-end' },
+  statusScore: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
   scoreLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1, color: 'rgba(0,0,0,0.55)' },
-  scoreValue: { fontSize: 16, fontWeight: '900', letterSpacing: 1.4, color: '#111827' },
+  scoreValue: { fontSize: 20, fontWeight: '900', letterSpacing: 1.2, color: '#111827' },
 
   // Mode indicator
   modeIndicator: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 12, backgroundColor: 'rgba(239,68,68,0.2)',
-    paddingVertical: 4, marginHorizontal: 4, borderRadius: 8, marginTop: 2,
-    minHeight: 26,
+    paddingVertical: 5, marginHorizontal: 4, borderRadius: 8, marginTop: 2,
+    height: 30,
   },
   modeHidden: {
+    backgroundColor: 'transparent',
+  },
+  modePopup: {
     backgroundColor: 'transparent',
   },
   modeText: { fontWeight: '800', color: '#991b1b', fontSize: 12 },
   modeTextPlaceholder: { fontSize: 12 },
   modeCancelText: { fontWeight: '800', color: '#dc2626', fontSize: 12, textDecorationLine: 'underline' },
+  popupInlineText: { color: '#d97706', fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
 
   // Board
   boardWrap: { alignItems: 'center' },
@@ -1155,27 +1651,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.65)', borderRadius: 8,
     borderColor: 'rgba(255,255,255,0.9)', elevation: 6,
   },
-  cell: {
-    borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.88)',
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-    borderWidth: 2, borderColor: 'transparent',
-  },
-  cellEmpty: { backgroundColor: 'rgba(0,0,0,0.04)' },
-  cellBomb: { backgroundColor: '#7f1d1d' },
-  cellHighlight: { backgroundColor: '#fef08a', borderColor: '#f59e0b' },
-  cellHighlightBomb: { backgroundColor: '#fca5a5', borderColor: '#ef4444' },
-  cellExplodeRed: { backgroundColor: '#ef4444', borderColor: '#dc2626' },
-  cellExplodeOrange: { backgroundColor: '#f97316', borderColor: '#ea580c' },
-  cellExplodeYellow: { backgroundColor: '#fbbf24', borderColor: '#f59e0b', opacity: 0.4 },
-  cellSelectMode: { borderColor: '#fbbf24' },
-  cellImage: { width: '100%', height: '100%' },
-  cellNum: {
-    position: 'absolute', bottom: 1, right: 3,
-    color: '#ffffff', fontWeight: '900',
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3,
-  },
-  bombEmoji: {},
+  // Cell styles are now in game/AnimatedCell.tsx
 
   // Footer
   footerPanel: { alignItems: 'center', paddingBottom: 4, paddingTop: 0, width: '100%' },
@@ -1188,8 +1664,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.25)', paddingVertical: 2, paddingHorizontal: 10,
     borderRadius: 6, overflow: 'hidden',
   },
+  footerScroll: { alignItems: 'center' },
   footerGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
-  footerIconWrap: { width: `${100 / 6}%`, padding: 1 },
+  footerIconWrap: { padding: 2 },
   footerIconCard: {
     aspectRatio: 1, borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.75)',
@@ -1201,12 +1678,6 @@ const styles = StyleSheet.create({
   lockedText: { fontSize: 16, fontWeight: '900', color: 'rgba(0,0,0,0.3)' },
 
   // Popup
-  popupOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  popupBox: {
-    backgroundColor: 'rgba(0,0,0,0.82)',
-    paddingVertical: 14, paddingHorizontal: 28, borderRadius: 16,
-  },
-  popupBoxText: { color: '#fbbf24', fontSize: 22, fontWeight: '900', letterSpacing: 1 },
 
   // Modal
   modalOverlay: {
@@ -1234,11 +1705,51 @@ const styles = StyleSheet.create({
   charPopupDesc: { fontSize: 14, color: '#6b7280', fontWeight: '700' },
 
   // Rules
-  rulesText: { fontSize: 14, lineHeight: 22, color: '#374151', paddingVertical: 8 },
+  rulesHeader: {
+    backgroundColor: '#d97706', paddingVertical: 14, paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  rulesHeaderText: { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 1 },
+  rulesCloseX: {
+    position: 'absolute', right: 12, top: 12,
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center',
+  },
+  rulesCloseXText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+  rulesPage: { gap: 8, paddingVertical: 4 },
+  rulesTitle: {
+    fontSize: 16, fontWeight: '900', color: '#92400e', marginBottom: 4,
+  },
+  rulesText: { fontSize: 13, lineHeight: 21, color: '#374151', fontWeight: '600' },
   rulesBold: { fontWeight: '900', color: '#111827' },
+  rulesTip: {
+    fontSize: 12, lineHeight: 20, color: '#374151', fontWeight: '600',
+    backgroundColor: '#fef3c7', borderRadius: 8, padding: 8, marginTop: 4,
+  },
+  rulesTable: {
+    borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, overflow: 'hidden', marginVertical: 4,
+  },
+  rulesTableHeader: {
+    flexDirection: 'row', backgroundColor: '#f59e0b', paddingVertical: 6, paddingHorizontal: 4,
+  },
+  rulesTableRow: {
+    flexDirection: 'row', paddingVertical: 5, paddingHorizontal: 4,
+    borderTopWidth: 1, borderTopColor: '#f3f4f6',
+  },
+  rulesTableCell: {
+    flex: 1, fontSize: 11, fontWeight: '600', color: '#374151', textAlign: 'center',
+  },
+  rulesExamples: {
+    backgroundColor: '#f3f4f6', borderRadius: 8, padding: 8, gap: 4, marginVertical: 4,
+  },
+  rulesExample: { fontSize: 13, fontWeight: '600', color: '#374151' },
+  rulesDiagram: {
+    backgroundColor: '#1f2937', borderRadius: 8, padding: 12, alignItems: 'center', marginVertical: 4,
+  },
+  rulesDiagramText: { fontSize: 18, color: '#fff', fontFamily: 'monospace' },
   rulesNav: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    width: '100%', marginTop: 8,
+    width: '100%', marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#f3f4f6',
   },
   rulesNavText: { color: '#d97706', fontWeight: '900', fontSize: 15 },
   rulesPageNum: { color: '#9ca3af', fontWeight: '700' },
@@ -1286,7 +1797,7 @@ const styles = StyleSheet.create({
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
   nameInput: {
     flex: 1, borderWidth: 2, borderColor: '#d1d5db', borderRadius: 10,
-    paddingVertical: 6, paddingHorizontal: 12, fontSize: 14, fontWeight: '700',
+    height: 56, paddingVertical: 14, paddingHorizontal: 12, fontSize: 16, fontWeight: '700', color: '#111827',
   },
   nameSaveBtn: { backgroundColor: '#f59e0b', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10 },
   nameSaveBtnText: { color: '#fff', fontWeight: '900', fontSize: 13 },
@@ -1298,29 +1809,74 @@ const styles = StyleSheet.create({
   settingsCloseBtnText: { color: '#d97706', fontWeight: '900', fontSize: 16 },
 
   // Ranking
-  rankTabRow: { flexDirection: 'row', gap: 0, width: '100%', borderRadius: 10, overflow: 'hidden' },
-  rankTab: {
-    flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: '#f3f4f6',
+  // Ranking dialog (元アプリ準拠)
+  rkDialog: {
+    width: '100%', maxWidth: 440, maxHeight: '90%', minHeight: 300,
+    backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden',
+    flexShrink: 1,
   },
-  rankTabActive: { backgroundColor: '#f59e0b' },
-  rankTabText: { fontWeight: '800', fontSize: 13, color: '#6b7280' },
-  rankTabTextActive: { color: '#fff' },
-  rankPeriodRow: { flexDirection: 'row', gap: 6, width: '100%', justifyContent: 'center' },
-  rankPeriodBtn: {
-    paddingVertical: 5, paddingHorizontal: 14, borderRadius: 16,
-    backgroundColor: '#f3f4f6',
+  rkHeader: {
+    backgroundColor: '#d97706', paddingVertical: 14, paddingHorizontal: 16,
+    alignItems: 'center',
   },
-  rankPeriodBtnActive: { backgroundColor: '#d97706' },
-  rankPeriodText: { fontWeight: '700', fontSize: 12, color: '#6b7280' },
-  rankPeriodTextActive: { color: '#fff' },
-  rankName: { fontWeight: '700', color: '#374151', fontSize: 12, flex: 1 },
-  rankEmpty: { fontSize: 14, color: '#9ca3af', textAlign: 'center', paddingVertical: 20 },
-  rankRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: '#f3f4f6',
+  rkHeaderText: { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 1 },
+  rkCloseX: {
+    position: 'absolute', right: 12, top: 12,
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center',
   },
-  rankNum: { width: 22, fontWeight: '900', color: '#d97706', fontSize: 14 },
-  rankScore: { width: 80, fontWeight: '800', color: '#111827', fontSize: 14, textAlign: 'right' },
-  rankLevel: { width: 40, fontWeight: '700', color: '#6b7280', fontSize: 12, textAlign: 'center' },
-  rankDate: { width: 52, fontWeight: '600', color: '#9ca3af', fontSize: 11, textAlign: 'right' },
+  rkCloseXText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+  rkTabs: {
+    flexDirection: 'row', backgroundColor: '#fffbeb',
+    borderBottomWidth: 2, borderBottomColor: '#f3f4f6',
+  },
+  rkTab: {
+    flex: 1, paddingVertical: 10, alignItems: 'center',
+    borderBottomWidth: 3, borderBottomColor: 'transparent',
+  },
+  rkTabActive: { borderBottomColor: '#d97706' },
+  rkTabText: { fontWeight: '800', fontSize: 13, color: '#aaa' },
+  rkTabTextActive: { color: '#d97706' },
+  rkPeriodTabs: {
+    flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f0f0f0',
+    marginHorizontal: 16, marginTop: 8, marginBottom: 4,
+  },
+  rkPeriodTab: {
+    flex: 1, paddingVertical: 5, alignItems: 'center',
+    borderBottomWidth: 2, borderBottomColor: 'transparent',
+  },
+  rkPeriodTabActive: { borderBottomColor: '#d97706' },
+  rkPeriodText: { fontWeight: '700', fontSize: 12, color: '#9ca3af' },
+  rkPeriodTextActive: { color: '#d97706' },
+  rkBody: { paddingHorizontal: 12, maxHeight: 400 },
+  rkTh: {
+    flexDirection: 'row', backgroundColor: '#fef3c7', paddingVertical: 6, paddingHorizontal: 4,
+    borderWidth: 1, borderColor: '#fde68a',
+  },
+  rkThCell: {
+    fontSize: 14, fontWeight: '800', color: '#92400e', textAlign: 'center',
+    borderRightWidth: 1, borderRightColor: '#f0dca0',
+  },
+  rkTd: {
+    flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 4,
+    borderBottomWidth: 1, borderBottomColor: '#e5e7eb', alignItems: 'center',
+  },
+  rkTdEven: { backgroundColor: '#f9fafb' },
+  rkTdCell: {
+    fontSize: 14, fontWeight: '600', color: '#374151', textAlign: 'center',
+    borderRightWidth: 1, borderRightColor: '#e5e7eb',
+  },
+  rkEmpty: { fontSize: 14, color: '#888', textAlign: 'center', paddingVertical: 24 },
+  rkFooter: {
+    paddingVertical: 12, paddingHorizontal: 16, gap: 6,
+    borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: '#f9fafb',
+    alignItems: 'center',
+  },
+  rkNote: { fontSize: 10, color: '#78716c', textAlign: 'center', marginBottom: 4 },
+  rkWarning: { fontSize: 11, color: '#ef4444', fontWeight: '700', textAlign: 'center' },
+  rkCloseBtn: {
+    backgroundColor: '#d97706', paddingVertical: 8, paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  rkCloseBtnText: { color: '#fff', fontWeight: '900', fontSize: 14 },
 });

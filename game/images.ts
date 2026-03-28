@@ -11,10 +11,16 @@ export const DINO_SOURCES = [
   require('../assets/images/dino-8.png'),
   require('../assets/images/dino-9.png'),
   require('../assets/images/dino-10.png'),
-  require('../assets/images/dino-11.png'),
+  require('../assets/images/dino-11.png'),   // ケツァルコアトル
   require('../assets/images/dino-12.png'),
   require('../assets/images/dino-13.png'),
   require('../assets/images/dino-14.png'),
   require('../assets/images/dino-15.png'),
   require('../assets/images/dino-16.png'),
+  require('../assets/images/dino-17.png'),
+  require('../assets/images/dino-18.png'),
+  require('../assets/images/dino-19.png'),   // ユニコーン
+  require('../assets/images/dino-20.png'),   // フェニックス
+  require('../assets/images/dino-21.png'),   // 麒麟
+  require('../assets/images/dino-22.png'),   // 神
 ] as const;

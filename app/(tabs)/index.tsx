@@ -3,8 +3,18 @@ import { type Href, useRouter } from 'expo-router';
 import * as React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+const DINO_SOURCES = [
+  require('../../assets/images/dino-0.png'),
+  require('../../assets/images/dino-1.png'),
+  require('../../assets/images/dino-2.png'),
+  require('../../assets/images/dino-3.png'),
+  require('../../assets/images/dino-4.png'),
+  require('../../assets/images/dino-5.png'),
+];
+
 export default function HomeScreen() {
   const router = useRouter();
+  const [dinoIdx] = React.useState(() => Math.floor(Math.random() * DINO_SOURCES.length));
 
   return (
     <View style={styles.screen}>
@@ -15,7 +25,7 @@ export default function HomeScreen() {
 
         <View style={styles.hero}>
           <Image
-            source={require('../../assets/images/dino-0.png')}
+            source={DINO_SOURCES[dinoIdx]}
             style={styles.heroImage}
             contentFit="contain"
           />
@@ -29,14 +39,7 @@ export default function HomeScreen() {
           <Text style={styles.primaryButtonText}>🦕 ゲームスタート</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          activeOpacity={0.85}
-          style={styles.secondaryButton}
-          onPress={() => router.push('/howto' as Href)}>
-          <Text style={styles.secondaryButtonText}>📖 あそびかた</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.version}>v1.0.0 (Expo Native)</Text>
+        <Text style={styles.version}>v5.0.1</Text>
       </View>
     </View>
   );
@@ -107,20 +110,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     letterSpacing: 0.5,
-  },
-  secondaryButton: {
-    backgroundColor: '#ef4444',
-    borderRadius: 26,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  secondaryButtonText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0.3,
   },
   shadow: {
     shadowColor: '#f59e0b',

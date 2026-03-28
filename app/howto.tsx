@@ -1,122 +1,62 @@
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { DINO_SOURCES } from '../game/images';
-import { DINO_NAMES, DINO_UNLOCK_LV } from '../game/constants';
-
-const PAGES = [
+const CHANGELOG = [
   {
-    title: '基本ルール',
-    content: `🦕 恐竜けしは、同じ恐竜をつなげて消すパズルゲームです。
-
-● 8×10のマス目に恐竜が並んでいます
-● 各恐竜には数字が書かれています
-● その数字の数だけ同じ恐竜がつながっていると消せます
-
-例：
-　「1」→ 1個で消せる
-　「3」→ 3個つながっていれば消せる
-　「6」→ 6個つながっていれば消せる`,
-  },
-  {
-    title: 'ボルケーノ（🌋）',
-    content: `🌋 ボルケーノは特殊マスです。
-
-● タップするとその行と列が全て消えます
-● 爆発範囲内に別の🌋があると連鎖します
-● 盤面に同時に最大2個まで出現
-● レベルが低いほど出現確率が高い`,
-  },
-  {
-    title: 'アイテム',
-    content: `レベルアップでアイテムを獲得できます。
-
-【消】消しゴム（LV3で解放）
-　→ 1マスだけ自由に消せます
-
-【混】シャッフル（LV5で解放）
-　→ 盤面を全てシャッフルします
-
-【変】変換（LV10で解放）
-　→ 選んだ恐竜を基本6種のどれかに変換`,
-  },
-  {
-    title: 'レベルアップ',
-    content: `一定数のグループを消すとレベルアップ！
-
-● LV1〜49: 10グループで次のレベルへ
-● LV50〜79: 20グループ
-● LV80〜99: 30グループ
-● LV100〜: 50グループ
-
-レベルが上がると新しい恐竜が登場します。
-高い数字の恐竜ほど消すのが難しいですが、
-得点が高くなります。`,
-  },
-  {
-    title: 'ゲームオーバー',
-    content: `消せるグループがなく、アイテムも
-使い切った場合にゲームオーバーです。
-
-● ヒントボタンで消せる場所を確認
-● アイテムが残っていればボタンが光ります
-● スコアはランキングに保存されます
-
-目指せハイスコア！🏆`,
+    version: 'v5.0.0',
+    date: '2026.3.21',
+    changes: [
+      'Expo (React Native) 版リリース',
+      'react-native-reanimated による60fps落下アニメーション',
+      '火山カスケード爆発エフェクト＋パーティクル',
+      'BGM 3曲 + 効果音（タップ/消去/爆弾/ボーナス/アイテム）',
+      'グローバルランキング（Firebase連携）',
+      'ローカルランキング（TOP10）',
+      '戻る機能（1手前）',
+      '恐竜パネル（タップで詳細表示）',
+      '設定：音量4段階/数値サイズ4段階/BGM切替/プレイヤー名',
+      '17種の恐竜（LV100で全解放）',
+      'アイテム：🗑DEL / 🔀MIX / 🔄CHG',
+      'アイテム交換：DEL×10 → CHG×1',
+      'ポップアップ表示の独立コンポーネント化で再レンダリング最適化',
+      'タイマー・サウンドのメモリリーク修正でパフォーマンス改善',
+    ],
   },
 ];
 
-export default function HowtoScreen() {
+export default function ChangelogScreen() {
   const router = useRouter();
-  const [page, setPage] = React.useState(0);
 
   return (
     <View style={styles.screen}>
       <View style={styles.card}>
-        <Text style={styles.title}>📖 あそびかた</Text>
-
-        <View style={styles.pageHeader}>
-          <Text style={styles.pageTitle}>{PAGES[page].title}</Text>
-          <Text style={styles.pageNum}>{page + 1}/{PAGES.length}</Text>
+        <View style={styles.header}>
+          <Text style={styles.headerText}>📋 更新履歴</Text>
+          <TouchableOpacity style={styles.closeX} onPress={() => router.back()}>
+            <Text style={styles.closeXText}>✕</Text>
+          </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scroll}>
-          <Text style={styles.content}>{PAGES[page].content}</Text>
-
-          {page === 0 && (
-            <View style={styles.dinoRow}>
-              {[0, 1, 2, 3, 4, 5].map(i => (
-                <View key={i} style={styles.dinoDemo}>
-                  <Image source={DINO_SOURCES[i]} style={styles.dinoImg} contentFit="contain" />
-                  <Text style={styles.dinoDemoNum}>{i + 1}</Text>
+        <ScrollView style={styles.scroll} contentContainerStyle={{ padding: 16, gap: 16 }}>
+          {CHANGELOG.map((entry, i) => (
+            <View key={i} style={styles.entry}>
+              <View style={styles.versionRow}>
+                <Text style={styles.versionText}>{entry.version}</Text>
+                <Text style={styles.dateText}>{entry.date}</Text>
+              </View>
+              {entry.changes.map((change, j) => (
+                <View key={j} style={styles.changeRow}>
+                  <Text style={styles.bullet}>●</Text>
+                  <Text style={styles.changeText}>{change}</Text>
                 </View>
               ))}
             </View>
-          )}
+          ))}
         </ScrollView>
 
-        <View style={styles.nav}>
-          {page > 0 ? (
-            <TouchableOpacity style={styles.navBtn} onPress={() => setPage(page - 1)}>
-              <Text style={styles.navBtnText}>◀ 前へ</Text>
-            </TouchableOpacity>
-          ) : <View />}
-
-          {page < PAGES.length - 1 ? (
-            <TouchableOpacity style={styles.navBtn} onPress={() => setPage(page + 1)}>
-              <Text style={styles.navBtnText}>次へ ▶</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={[styles.navBtn, styles.navBtnClose]} onPress={() => router.back()}>
-              <Text style={[styles.navBtnText, { color: '#fff' }]}>閉じる</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
         <TouchableOpacity style={styles.closeBtn} onPress={() => router.back()}>
-          <Text style={styles.closeBtnText}>✕</Text>
+          <Text style={styles.closeBtnText}>閉じる</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -125,106 +65,38 @@ export default function HowtoScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
+    flex: 1, backgroundColor: '#fffbeb',
+    alignItems: 'center', justifyContent: 'center', padding: 16,
   },
   card: {
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '85%',
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
+    width: '100%', maxWidth: 400, flex: 1, maxHeight: '85%',
+    backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#d97706',
-    textAlign: 'center',
-    marginBottom: 12,
+  header: {
+    backgroundColor: '#f59e0b', flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 16,
   },
-  pageHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+  headerText: { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 1 },
+  closeX: {
+    position: 'absolute', right: 12, top: 10,
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.15)', alignItems: 'center', justifyContent: 'center',
   },
-  pageTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#111827',
+  closeXText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+  scroll: { flex: 1 },
+  entry: { gap: 6 },
+  versionRow: {
+    flexDirection: 'row', alignItems: 'baseline', gap: 10,
+    borderBottomWidth: 2, borderBottomColor: '#f59e0b', paddingBottom: 6,
   },
-  pageNum: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#9ca3af',
-  },
-  scroll: {
-    flex: 1,
-    marginBottom: 12,
-  },
-  content: {
-    fontSize: 14,
-    lineHeight: 24,
-    color: '#374151',
-    fontWeight: '600',
-  },
-  dinoRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 14,
-    flexWrap: 'wrap',
-  },
-  dinoDemo: {
-    alignItems: 'center',
-    gap: 2,
-  },
-  dinoImg: {
-    width: 44,
-    height: 44,
-  },
-  dinoDemoNum: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#d97706',
-  },
-  nav: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  navBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: '#f3f4f6',
-  },
-  navBtnText: {
-    fontWeight: '900',
-    color: '#d97706',
-    fontSize: 15,
-  },
-  navBtnClose: {
-    backgroundColor: '#f59e0b',
-  },
+  versionText: { fontSize: 18, fontWeight: '900', color: '#d97706' },
+  dateText: { fontSize: 13, fontWeight: '700', color: '#9ca3af' },
+  changeRow: { flexDirection: 'row', gap: 6, paddingLeft: 4 },
+  bullet: { color: '#f59e0b', fontSize: 10, marginTop: 4 },
+  changeText: { fontSize: 13, fontWeight: '600', color: '#374151', flex: 1, lineHeight: 20 },
   closeBtn: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 14, alignItems: 'center',
+    borderTopWidth: 1, borderTopColor: '#eee',
   },
-  closeBtnText: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#6b7280',
-  },
+  closeBtnText: { color: '#d97706', fontWeight: '900', fontSize: 16 },
 });

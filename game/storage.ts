@@ -57,7 +57,7 @@ export async function saveToRanking(score: number, level: number): Promise<numbe
   const entry: RankEntry = {
     score,
     level,
-    date: new Date().toISOString().slice(0, 10),
+    date: (() => { const n = new Date(); const p = (v: number) => String(v).padStart(2, '0'); return `${p(n.getMonth()+1)}/${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}`; })(),
   };
   rankings.push(entry);
   rankings.sort((a, b) => b.score - a.score);
@@ -71,8 +71,9 @@ export async function saveToRanking(score: number, level: number): Promise<numbe
 // --- Settings ---
 
 export interface Settings {
-  soundVolume: number;  // 0, 0.3, 0.7, 1.0
+  soundVolume: number;  // 0, 0.1, 0.3, 0.5
   bgmOn: boolean;
+  hapticsOn: boolean;
   dropAnimation: boolean;
   bombWaveEffect: boolean;
   numberSize: 'sm' | 'md' | 'lg' | 'xl';
@@ -80,8 +81,9 @@ export interface Settings {
 }
 
 const defaultSettings: Settings = {
-  soundVolume: 0.7,
+  soundVolume: 0.3,
   bgmOn: true,
+  hapticsOn: true,
   dropAnimation: true,
   bombWaveEffect: true,
   numberSize: 'md',

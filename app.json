@@ -1,22 +1,24 @@
 {
   "expo": {
-    "name": "dinokeshi-native",
+    "name": "恐竜けし",
     "slug": "dinokeshi-native",
-    "version": "1.0.0",
+    "version": "5.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "dinokeshinative",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
+      "bundleIdentifier": "com.laviii55.dinokeshi",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.laviii55.dinokeshi",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "monochromeImage": "./assets/images/android-icon-monochrome.png",
+        "backgroundColor": "#E6F4FE"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -38,11 +40,28 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3965931075265436~9239267864",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+        }
+      ],
+      "expo-dev-client",
+      "expo-audio",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "googleMobileAdsAppId": "ca-app-pub-3965931075265436~9239267864",
+      "router": {},
+      "eas": {
+        "projectId": "8e2cf0c7-90a4-4a85-9bdd-7ee36b67ede5"
+      }
     }
   }
 }

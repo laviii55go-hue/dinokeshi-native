@@ -1,95 +1,83 @@
 import { Audio } from 'expo-av';
 
-let soundVolume = 0.7;
+let soundVolume = 0.3;
+
+const allSounds = new Set<Audio.Sound>();
 
 export function setSoundVolume(v: number) {
   soundVolume = v;
+  muted = v === 0;
+  for (const s of allSounds) {
+    s.setVolumeAsync(v).catch(() => {});
+  }
 }
 
 export function getSoundVolume() {
   return soundVolume;
 }
 
-export async function initAudio() {
-  await Audio.setAudioModeAsync({
-    playsInSilentModeIOS: true,
-    staysActiveInBackground: false,
-  });
-}
+// ---- Sound effects ----
 
-// ---- Sound effects using short generated tones ----
-
-async function playTone(frequency: number, durationMs: number, vol?: number) {
-  // expo-av doesn't support synthesis, so we use very short silent + haptics
-  // For real tone generation we'd need expo-audio or a native module
-  // Instead we provide a simple click/pop sound via a tiny bundled wav
-}
-
-// We generate sound effects as short audio files at build time isn't feasible,
-// so we create a minimal approach: use a single tick sound file and vary playback.
-// For now, provide placeholder that plays haptic feedback
-// TODO: Add actual .wav/.mp3 sound effect files for richer audio
-
-let tickSoundObj: Audio.Sound | null = null;
-let eraseSoundObj: Audio.Sound | null = null;
-let bombSoundObj: Audio.Sound | null = null;
-let gameoverSoundObj: Audio.Sound | null = null;
-
-// Preload sound effects
 const SE_SOURCES = {
   tick: require('../assets/audio/se_tick.mp3'),
   erase: require('../assets/audio/se_erase.mp3'),
   bomb: require('../assets/audio/se_bomb.mp3'),
   gameover: require('../assets/audio/se_gameover.mp3'),
+  bonus: require('../assets/audio/se_bonus.mp3'),
+  bonusBig: require('../assets/audio/se_bonus_big.mp3'),
+  eraser: require('../assets/audio/se_eraser.mp3'),
+  shuffle: require('../assets/audio/se_shuffle.mp3'),
+  henkou: require('../assets/audio/se_henkou.mp3'),
 };
 
+let tickS: Audio.Sound | null = null;
+let eraseS: Audio.Sound | null = null;
+let bombS: Audio.Sound | null = null;
+let gameoverS: Audio.Sound | null = null;
+let bonusS: Audio.Sound | null = null;
+let bonusBigS: Audio.Sound | null = null;
+let eraserS: Audio.Sound | null = null;
+let shuffleS: Audio.Sound | null = null;
+let henkouS: Audio.Sound | null = null;
 let seLoaded = false;
 
 export async function loadSoundEffects() {
   if (seLoaded) return;
   try {
-    const [t, e, b, g] = await Promise.all([
-      Audio.Sound.createAsync(SE_SOURCES.tick, { volume: soundVolume }),
-      Audio.Sound.createAsync(SE_SOURCES.erase, { volume: soundVolume }),
-      Audio.Sound.createAsync(SE_SOURCES.bomb, { volume: soundVolume }),
-      Audio.Sound.createAsync(SE_SOURCES.gameover, { volume: soundVolume }),
-    ]);
-    tickSoundObj = t.sound;
-    eraseSoundObj = e.sound;
-    bombSoundObj = b.sound;
-    gameoverSoundObj = g.sound;
+    const vol = soundVolume; // capture current volume at load time
+    const load = async (src: any) => {
+      const { sound } = await Audio.Sound.createAsync(src, { volume: vol });
+      allSounds.add(sound);
+      return sound;
+    };
+    [tickS, eraseS, bombS, gameoverS, bonusS, bonusBigS, eraserS, shuffleS, henkouS] =
+      await Promise.all([
+        load(SE_SOURCES.tick), load(SE_SOURCES.erase), load(SE_SOURCES.bomb),
+        load(SE_SOURCES.gameover), load(SE_SOURCES.bonus), load(SE_SOURCES.bonusBig),
+        load(SE_SOURCES.eraser), load(SE_SOURCES.shuffle), load(SE_SOURCES.henkou),
+      ]);
     seLoaded = true;
   } catch (e) {
     console.warn('SE load failed:', e);
   }
 }
 
-async function playSE(sound: Audio.Sound | null) {
-  if (!sound || soundVolume === 0) return;
-  try {
-    await sound.setVolumeAsync(soundVolume);
-    await sound.setPositionAsync(0);
-    await sound.playAsync();
-  } catch (e) {
-    console.warn('SE play failed:', e);
-  }
+let muted = false;
+
+function playSE(sound: Audio.Sound | null) {
+  if (!sound || muted) return;
+  sound.replayAsync({ positionMillis: 0 }).catch(() => {});
 }
 
-export async function playTick() {
-  await playSE(tickSoundObj);
-}
-
-export async function playErase() {
-  await playSE(eraseSoundObj);
-}
-
-export async function playBomb() {
-  await playSE(bombSoundObj);
-}
-
-export async function playGameOver() {
-  await playSE(gameoverSoundObj);
-}
+export function playTick() { playSE(tickS); }
+export function playErase() { playSE(eraseS); }
+export function playBomb() { playSE(bombS); }
+export function playBonus() { playSE(bonusS); }
+export function playBonusBig() { playSE(bonusBigS); }
+export function playEraser() { playSE(eraserS); }
+export function playShuffle() { playSE(shuffleS); }
+export function playHenkou() { playSE(henkouS); }
+export function playGameOver() { playSE(gameoverS); }
 
 // ---- BGM ----
 
@@ -108,12 +96,9 @@ export const BGM_NAMES = ['恐竜時代', '恐竜散歩', 'ピコピコゲーム
 export function onBgmChange(fn: () => void) {
   bgmChangeListeners.push(fn);
   return () => {
-    bgmChangeListeners = bgmChangeListeners.filter(f => f !== fn);
+    const idx = bgmChangeListeners.indexOf(fn);
+    if (idx >= 0) bgmChangeListeners.splice(idx, 1);
   };
-}
-
-function notifyBgmChange() {
-  bgmChangeListeners.forEach(fn => fn());
 }
 
 export async function startBGM(index?: number) {
@@ -126,7 +111,7 @@ export async function startBGM(index?: number) {
     );
     bgmSound = sound;
     await bgmSound.playAsync();
-    notifyBgmChange();
+    bgmChangeListeners.forEach(fn => fn());
   } catch (e) {
     console.warn('BGM start failed:', e);
   }
@@ -139,9 +124,7 @@ export async function stopBGM() {
       await bgmSound.unloadAsync();
       bgmSound = null;
     }
-  } catch (e) {
-    console.warn('BGM stop failed:', e);
-  }
+  } catch {}
 }
 
 export async function switchBGM(index: number) {

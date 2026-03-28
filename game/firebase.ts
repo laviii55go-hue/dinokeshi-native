@@ -18,54 +18,70 @@ export interface GlobalRankEntry {
 
 // --- Read global rankings ---
 
-export type RankPeriod = 'daily' | 'weekly' | 'all';
+export type RankPeriod = 'daily' | 'weekly' | 'monthly';
 
-export async function fetchGlobalRankings(period: RankPeriod = 'daily'): Promise<GlobalRankEntry[]> {
+// Cache: monthly Firebase data (covers daily & weekly too)
+let _cachedEntries: GlobalRankEntry[] | null = null;
+let _cacheTs = 0;
+const CACHE_TTL = 60_000; // 60 seconds
+
+export function invalidateRankingsCache() {
+  _cachedEntries = null;
+  _cacheTs = 0;
+}
+
+async function fetchMonthlyEntries(): Promise<GlobalRankEntry[]> {
+  const now = Date.now();
+  if (_cachedEntries && now - _cacheTs < CACHE_TTL) return _cachedEntries;
   try {
-    const res = await fetch(FB_SCORES_URL);
-    if (!res.ok) return [];
+    const d = new Date();
+    const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+    const url = `${FB_SCORES_URL}?orderBy="ts"&startAt=${monthStart}&endAt=${monthEnd}`;
+    const res = await fetch(url);
+    if (!res.ok) return _cachedEntries ?? [];
     const data = await res.json();
     if (!data) return [];
-
-    const DAY = 24 * 60 * 60 * 1000;
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const todayEnd = todayStart + DAY;
-
-    const dow = now.getDay();
-    const mondayOffset = dow === 0 ? 6 : dow - 1;
-    const monday = new Date(now);
-    monday.setDate(monday.getDate() - mondayOffset);
-    monday.setHours(0, 0, 0, 0);
-    const weekStart = monday.getTime();
-    const weekEnd = weekStart + 7 * DAY;
-
-    const entries: GlobalRankEntry[] = Object.values(data);
-
-    const filtered = entries.filter(d => {
-      if (period === 'all') return true;
-      if (!d.ts) return false;
-      if (period === 'daily') return d.ts >= todayStart && d.ts < todayEnd;
-      if (period === 'weekly') return d.ts >= weekStart && d.ts < weekEnd;
-      return true;
-    });
-
-    // Keep only the best score per user name
-    const bestByName = new Map<string, GlobalRankEntry>();
-    for (const entry of filtered) {
-      const existing = bestByName.get(entry.name);
-      if (!existing || entry.score > existing.score) {
-        bestByName.set(entry.name, entry);
-      }
-    }
-
-    const unique = Array.from(bestByName.values());
-    unique.sort((a, b) => b.score - a.score);
-    return unique.slice(0, 10);
+    _cachedEntries = Object.values(data);
+    _cacheTs = now;
+    return _cachedEntries;
   } catch (e) {
     console.warn('Failed to fetch global rankings:', e);
-    return [];
+    return _cachedEntries ?? [];
   }
+}
+
+export async function fetchGlobalRankings(period: RankPeriod = 'daily'): Promise<GlobalRankEntry[]> {
+  const entries = await fetchMonthlyEntries();
+  if (entries.length === 0) return [];
+
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const todayEnd = todayStart + DAY;
+
+  const weekStart = todayStart - (now.getDay() * DAY); // Sunday start
+
+  const filtered = entries.filter(d => {
+    if (!d.ts) return false;
+    if (period === 'daily') return d.ts >= todayStart && d.ts < todayEnd;
+    if (period === 'weekly') return d.ts >= weekStart && d.ts < todayEnd;
+    if (period === 'monthly') return true; // already filtered by server
+    return true;
+  });
+
+  // Keep only the best score per user name
+  const bestByName = new Map<string, GlobalRankEntry>();
+  for (const entry of filtered) {
+    const existing = bestByName.get(entry.name);
+    if (!existing || entry.score > existing.score) {
+      bestByName.set(entry.name, entry);
+    }
+  }
+
+  const unique = Array.from(bestByName.values());
+  unique.sort((a, b) => b.score - a.score);
+  return unique.slice(0, 10);
 }
 
 // --- Submit score to global ranking ---
@@ -110,6 +126,7 @@ export async function submitGlobalScore(name: string, score: number, level: numb
       body: JSON.stringify(data),
     });
 
+    if (res.ok) invalidateRankingsCache();
     return res.ok;
   } catch (e) {
     console.warn('Failed to submit global score:', e);
