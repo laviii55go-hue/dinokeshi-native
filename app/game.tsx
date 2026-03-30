@@ -29,6 +29,7 @@ import {
   checkLevelUp,
   convertType,
   createInitialState,
+  eraseAllOfType,
   eraseBombCells,
   eraseCells,
   explodeBomb,
@@ -88,15 +89,19 @@ export default function GameScreen() {
   const animatingRef = React.useRef(false);
   const [eraserMode, setEraserMode] = React.useState(false);
   const [henkouMode, setHenkouMode] = React.useState(false);
+  const [allMode, setAllMode] = React.useState(false);
   const eraserModeRef = React.useRef(false);
   const henkouModeRef = React.useRef(false);
+  const allModeRef = React.useRef(false);
   // Use refs for board visual state to avoid parent re-renders
+  const convertedCellsRef = React.useRef<Set<number>>(new Set());
   const highlightCellsRef = React.useRef<Set<number>>(new Set());
   const explodingCellsRef = React.useRef<Map<number, number>>(new Map());
   const explodePhaseRef = React.useRef(0);
   const [boardTick, setBoardTick] = React.useState(0); // single trigger for board re-render
 
   const triggerBoardUpdate = () => setBoardTick(t => t + 1);
+  const setConvertedCells = (s: Set<number>) => { convertedCellsRef.current = s; triggerBoardUpdate(); };
   const setHighlightCells = (s: Set<number>) => { highlightCellsRef.current = s; triggerBoardUpdate(); };
   const setExplodingCells = (m: Map<number, number>) => { explodingCellsRef.current = m; };
   const setExplodePhase = (p: number) => { explodePhaseRef.current = p; triggerBoardUpdate(); };
@@ -107,7 +112,8 @@ export default function GameScreen() {
   const [rankingVisible, setRankingVisible] = React.useState(false);
   const [rulesVisible, setRulesVisible] = React.useState(false);
   const [rulesPage, setRulesPage] = React.useState(0);
-  const [charPopup, setCharPopup] = React.useState<number | null>(null);
+  const [newDinoHighlight, setNewDinoHighlight] = React.useState<number | null>(null);
+  const footerPulseAnim = React.useRef(new Animated.Value(1)).current;
   const [dinoInfoPopup, setDinoInfoPopup] = React.useState<number | null>(null);
   const [menuVisible, setMenuVisible] = React.useState(false);
   const [exchangeVisible, setExchangeVisible] = React.useState(false);
@@ -179,6 +185,7 @@ export default function GameScreen() {
   gsRef.current = gameState;
   eraserModeRef.current = eraserMode;
   henkouModeRef.current = henkouMode;
+  allModeRef.current = allMode;
   settingsRef.current = settings;
 
   // Auto-save (debounced: every 5 seconds)
@@ -219,7 +226,7 @@ export default function GameScreen() {
 
   // Deferred popup ref - used to avoid setState during render (inside setGameState callbacks)
   const deferredPopupRef = React.useRef<{ text: string; duration: number } | null>(null);
-  const deferredLevelUpRef = React.useRef<{ dotsFlash: boolean; charPopup: number | null; pageIndex: number }>({ dotsFlash: false, charPopup: null, pageIndex: 0 });
+  const deferredLevelUpRef = React.useRef<{ dotsFlash: boolean; newDino: number | null; pageIndex: number }>({ dotsFlash: false, newDino: null, pageIndex: 0 });
 
   const showPopup = (text: string, duration = 150) => {
     popupTextRef.current = text;
@@ -254,7 +261,7 @@ export default function GameScreen() {
     );
   }
 
-  const { grid, level, score, erasedGroups, eraserCount, shuffleCount, henkouCount, running } = gameState;
+  const { grid, level, score, erasedGroups, eraserCount, shuffleCount, henkouCount, allCount, running } = gameState;
   const needed = groupsNeeded(level);
   const numSizeMultiplier = NUM_SIZE_OPTIONS.find(o => o.key === settings.numberSize)?.size ?? 0.75;
   const numFontSize = Math.max(10, cellSize * 0.32 * numSizeMultiplier / 0.75);
@@ -310,6 +317,14 @@ export default function GameScreen() {
       s.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       playHenkou();
       const targetType = cell.type;
+      // Build converted cell keys before state update
+      const convKeys = new Set<number>();
+      for (let rr = 0; rr < ROWS; rr++)
+        for (let cc = 0; cc < COLS; cc++)
+          if (gs.grid[rr][cc].type === targetType && !gs.grid[rr][cc].bomb)
+            convKeys.add(rr * COLS + cc);
+      setConvertedCells(convKeys);
+      setTimeout(() => setConvertedCells(new Set()), 600);
       setGameState(prev => {
         if (!prev) return prev;
 
@@ -319,6 +334,55 @@ export default function GameScreen() {
         checkAfterErase(ns);
         return ns;
       });
+      return;
+    }
+
+    // ALL mode: erase all of one type
+    if (allModeRef.current) {
+      if (cell.type < 0 || cell.bomb) return;
+      setAllMode(false);
+      animatingRef.current = true;
+      s.hapticsOn && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      playEraser();
+      const targetType = cell.type;
+
+      // Highlight all cells of this type briefly
+      const allKeys = new Set<number>();
+      for (let rr = 0; rr < ROWS; rr++)
+        for (let cc = 0; cc < COLS; cc++)
+          if (gs.grid[rr][cc].type === targetType && !gs.grid[rr][cc].bomb)
+            allKeys.add(rr * COLS + cc);
+      setHighlightCells(allKeys);
+      await delay(300);
+      setHighlightCells(new Set());
+
+      setGameState(prev => {
+        if (!prev) return prev;
+        const { newGrid, erasedCount } = eraseAllOfType(prev.grid, targetType);
+        if (erasedCount === 0) return prev;
+        const filled = applyGravityAndRefill(newGrid, prev.level);
+        const result = calcScore(erasedCount, targetType, prev.level);
+        const allBonus = erasedCount * 5;
+        const totalPts = result.pts + allBonus;
+        let ns: GameState = {
+          ...prev, grid: filled,
+          score: prev.score + totalPts,
+          erasedGroups: prev.erasedGroups + 1,
+          allCount: prev.allCount - 1,
+        };
+        const leveled = ns.erasedGroups >= groupsNeeded(ns.level);
+        ns = applyLevelUp(ns, false);
+        let popMsg = `💥ALL +${totalPts}pts`;
+        if (result.bonus === 'bonus') { popMsg += ' ✨'; playBonus(); }
+        if (leveled) popMsg += ` 🎉 LV${ns.level}!`;
+        deferPopup(popMsg, leveled ? 250 : 150);
+        gsRef.current = ns;
+        checkAfterErase(ns);
+        return ns;
+      });
+      flushDeferredPopup();
+      flushDeferredLevelUp();
+      animatingRef.current = false;
       return;
     }
 
@@ -439,6 +503,7 @@ export default function GameScreen() {
     if (result.earnedEraser) ns.eraserCount = (state.eraserCount || 0) + 1;
     if (result.earnedShuffle) ns.shuffleCount = (state.shuffleCount || 0) + 1;
     if (result.earnedHenkou) ns.henkouCount = (state.henkouCount || 0) + 1;
+    if (result.earnedAll) ns.allCount = (state.allCount || 0) + 1;
 
     if (showMsg) {
       let msg = `🎉 LV${result.newLevel}!`;
@@ -446,15 +511,16 @@ export default function GameScreen() {
       if (result.earnedEraser) items.push('DEL×1');
       if (result.earnedShuffle) items.push('MIX×1');
       if (result.earnedHenkou) items.push('CHG×1');
+      if (result.earnedAll) items.push('ALL×1');
       if (items.length > 0) msg += ` ${items.join(' ')}`;
       deferPopup(msg, 250);
     }
 
-    // Defer new dino popup
+    // Defer new dino footer highlight (popup removed, footer pulse instead)
     const unannounced = result.newTypes.filter(t => !ns.announcedTypes.includes(t));
     if (unannounced.length > 0) {
       ns = { ...ns, announcedTypes: [...ns.announcedTypes, ...unannounced] };
-      deferredLevelUpRef.current.charPopup = unannounced[0];
+      deferredLevelUpRef.current.newDino = unannounced[0];
       deferredLevelUpRef.current.pageIndex = Math.floor(unannounced[0] / 5);
     }
 
@@ -469,14 +535,23 @@ export default function GameScreen() {
       dotsFlashTimer.current = setTimeout(() => setDotsFlash(false), 500);
       d.dotsFlash = false;
     }
-    if (d.charPopup !== null) {
-      const newType = d.charPopup;
+    if (d.newDino !== null) {
+      const newType = d.newDino;
       const pageIndex = d.pageIndex;
-      d.charPopup = null;
+      d.newDino = null;
       if (levelUpTimer.current) clearTimeout(levelUpTimer.current);
       levelUpTimer.current = setTimeout(() => {
-        setCharPopup(newType);
+        // Scroll to the new dino in footer and pulse the icon
         footerListRef.current?.scrollToOffset({ offset: pageIndex * gridMaxWidth, animated: true });
+        setNewDinoHighlight(newType);
+        footerPulseAnim.setValue(1);
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(footerPulseAnim, { toValue: 1.3, duration: 400, useNativeDriver: true }),
+            Animated.timing(footerPulseAnim, { toValue: 1.0, duration: 400, useNativeDriver: true }),
+          ]),
+          { iterations: 3 },
+        ).start(() => setNewDinoHighlight(null));
       }, 400);
     }
   };
@@ -487,6 +562,7 @@ export default function GameScreen() {
     const eraserCnt = state.eraserCount;
     const shuffleCnt = state.shuffleCount;
     const henkouCnt = state.henkouCount;
+    const allCnt = state.allCount || 0;
     // Run after render completes so UI updates first
     if (checkEraseTimer.current) clearTimeout(checkEraseTimer.current);
     checkEraseTimer.current = setTimeout(() => {
@@ -501,6 +577,10 @@ export default function GameScreen() {
           flashTimer.current = setTimeout(() => setFlashButton(null), 3000);
         } else if (henkouCnt > 0) {
           setFlashButton('henkou');
+          if (flashTimer.current) clearTimeout(flashTimer.current);
+          flashTimer.current = setTimeout(() => setFlashButton(null), 3000);
+        } else if (allCnt > 0) {
+          setFlashButton('all');
           if (flashTimer.current) clearTimeout(flashTimer.current);
           flashTimer.current = setTimeout(() => setFlashButton(null), 3000);
         } else {
@@ -580,6 +660,7 @@ export default function GameScreen() {
   const handleEraser = () => {
     if (eraserCount <= 0 || animatingRef.current) return;
     setHenkouMode(false);
+    setAllMode(false);
     setEraserMode(!eraserMode);
     settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
@@ -587,7 +668,16 @@ export default function GameScreen() {
   const handleHenkou = () => {
     if (henkouCount <= 0 || animatingRef.current) return;
     setEraserMode(false);
+    setAllMode(false);
     setHenkouMode(!henkouMode);
+    settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleAll = () => {
+    if (allCount <= 0 || animatingRef.current) return;
+    setEraserMode(false);
+    setHenkouMode(false);
+    setAllMode(!allMode);
     settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -616,7 +706,7 @@ export default function GameScreen() {
       }
     }
     // No valid moves found
-    if (eraserCount > 0 || shuffleCount > 0 || henkouCount > 0) {
+    if (eraserCount > 0 || shuffleCount > 0 || henkouCount > 0 || allCount > 0) {
       showPopup('アイテムを使おう！', 2000);
     }
   };
@@ -626,7 +716,7 @@ export default function GameScreen() {
     setExchangeVisible(true);
   };
 
-  const confirmExchange = () => {
+  const confirmExchangeCHG = () => {
     setExchangeVisible(false);
     setGameState(prev => {
       if (!prev || prev.eraserCount < 10) return prev;
@@ -636,6 +726,18 @@ export default function GameScreen() {
     });
     settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     showPopup('DEL×10 → CHG×1 交換完了！', 200);
+  };
+
+  const confirmExchangeALL = () => {
+    setExchangeVisible(false);
+    setGameState(prev => {
+      if (!prev || prev.eraserCount < 15) return prev;
+      const ns = { ...prev, eraserCount: prev.eraserCount - 15, allCount: (prev.allCount || 0) + 1 };
+      gsRef.current = ns;
+      return ns;
+    });
+    settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    showPopup('DEL×15 → ALL×1 交換完了！', 200);
   };
 
   const handleExit = () => {
@@ -700,9 +802,10 @@ export default function GameScreen() {
           {/* Row 2: Items */}
           <View style={styles.itemsRow}>
             {[
-              { key: 'eraser', label: '🗑 DEL', count: eraserCount, mode: eraserMode, handler: handleEraser },
-              { key: 'shuffle', label: '🔀 MIX', count: shuffleCount, mode: false, handler: handleShuffle },
-              { key: 'henkou', label: '🔄 CHG', count: henkouCount, mode: henkouMode, handler: handleHenkou },
+              { key: 'eraser', label: 'DEL', count: eraserCount, mode: eraserMode, handler: handleEraser },
+              { key: 'shuffle', label: 'MIX', count: shuffleCount, mode: false, handler: handleShuffle },
+              { key: 'henkou', label: 'CHG', count: henkouCount, mode: henkouMode, handler: handleHenkou },
+              { key: 'all', label: 'ALL', count: allCount, mode: allMode, handler: handleAll },
             ].map(item => (
               <TouchableOpacity
                 key={item.key}
@@ -739,7 +842,8 @@ export default function GameScreen() {
           setterRef={popupSetterRef}
           eraserMode={eraserMode}
           henkouMode={henkouMode}
-          onCancelMode={() => { setEraserMode(false); setHenkouMode(false); }}
+          allMode={allMode}
+          onCancelMode={() => { setEraserMode(false); setHenkouMode(false); setAllMode(false); }}
           styles={styles}
         />
 
@@ -753,10 +857,11 @@ export default function GameScreen() {
                 cellGap={cellGap}
                 numFontSize={numFontSize}
                 dropAnimation={settings.dropAnimation}
+                convertedCells={convertedCellsRef.current}
                 highlightCells={highlightCellsRef.current}
                 explodingCells={explodingCellsRef.current}
                 explodePhase={explodePhaseRef.current}
-                isSelectMode={eraserMode || henkouMode}
+                isSelectMode={eraserMode || henkouMode || allMode}
                 onCellPress={stableCellPress}
               />
             </View>
@@ -785,19 +890,27 @@ export default function GameScreen() {
             decelerationRate="fast"
             renderItem={({ item: src, index: i }) => {
               const unlocked = level >= DINO_UNLOCK_LV[i];
+              const isPulsing = newDinoHighlight === i;
+              const iconContent = (
+                <View style={[styles.footerIconCard, !unlocked && styles.footerIconLocked, isPulsing && styles.footerIconPulse]}>
+                  {unlocked ? (
+                    <Image source={src} style={styles.footerIcon} contentFit="contain" />
+                  ) : (
+                    <Text style={styles.lockedText}>?</Text>
+                  )}
+                </View>
+              );
               return (
                 <TouchableOpacity
                   style={[styles.footerIconWrap, { width: gridMaxWidth / 5 }]}
                   activeOpacity={0.7}
                   onPress={() => unlocked && setDinoInfoPopup(i)}
                 >
-                  <View style={[styles.footerIconCard, !unlocked && styles.footerIconLocked]}>
-                    {unlocked ? (
-                      <Image source={src} style={styles.footerIcon} contentFit="contain" />
-                    ) : (
-                      <Text style={styles.lockedText}>?</Text>
-                    )}
-                  </View>
+                  {isPulsing ? (
+                    <Animated.View style={{ transform: [{ scale: footerPulseAnim }] }}>
+                      {iconContent}
+                    </Animated.View>
+                  ) : iconContent}
                 </TouchableOpacity>
               );
             }}
@@ -912,46 +1025,34 @@ export default function GameScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>アイテム交換</Text>
-            <Text style={{ fontSize: 16, color: '#374151', textAlign: 'center', lineHeight: 24 }}>
-              🗑DEL ×10 → 🔄CHG ×1{'\n'}に交換しますか？
+            <Text style={{ fontSize: 13, color: '#6b7280', textAlign: 'center' }}>
+              DEL ×{eraserCount}
             </Text>
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8, width: '100%' }}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { flex: 1, backgroundColor: '#e5e7eb' }]}
-                onPress={() => setExchangeVisible(false)}
-              >
-                <Text style={[styles.modalBtnText, { color: '#374151' }]}>キャンセル</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, { flex: 1 }]}
-                onPress={confirmExchange}
-              >
-                <Text style={styles.modalBtnText}>交換する</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={[styles.modalBtn, { opacity: eraserCount >= 10 ? 1 : 0.4 }]}
+              onPress={confirmExchangeCHG}
+              disabled={eraserCount < 10}
+            >
+              <Text style={styles.modalBtnText}>DEL×10 → CHG×1</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: '#dc2626', opacity: eraserCount >= 15 ? 1 : 0.4 }]}
+              onPress={confirmExchangeALL}
+              disabled={eraserCount < 15}
+            >
+              <Text style={styles.modalBtnText}>DEL×15 → ALL×1</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: '#e5e7eb' }]}
+              onPress={() => setExchangeVisible(false)}
+            >
+              <Text style={[styles.modalBtnText, { color: '#374151' }]}>キャンセル</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>}
 
-      {/* Character Popup */}
-      {charPopup !== null && <Modal visible={charPopup !== null} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            {charPopup !== null && (
-              <>
-                <Text style={styles.charPopupTitle}>新しいキャラクターが登場！</Text>
-                <Image source={DINO_SOURCES[charPopup]} style={styles.charPopupImage} contentFit="contain" />
-                <Text style={styles.charPopupName}>{DINO_NAMES[charPopup]} {DINO_EMOJI[charPopup]}</Text>
-                <Text style={styles.charPopupDesc}>LV{DINO_UNLOCK_LV[charPopup]}から盤面に出現するよ！</Text>
-                <Text style={styles.charPopupDesc}>数字: {charPopup + 1}（{charPopup + 1}個つながると消せる）</Text>
-                <TouchableOpacity style={styles.modalBtn} onPress={() => setCharPopup(null)}>
-                  <Text style={styles.modalBtnText}>OK</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>}
+      {/* Character Popup removed — new dinos are now highlighted in footer with gold pulse */}
 
       {/* Rules */}
       {rulesVisible && <Modal visible={rulesVisible} transparent animationType="fade">
@@ -999,19 +1100,15 @@ export default function GameScreen() {
                 <Text style={styles.rulesText}>
                   スコアは <Text style={styles.rulesBold}>消えた枚数 × 表示の数値</Text> で加算されます。
                 </Text>
-                <View style={styles.rulesExamples}>
-                  <Text style={styles.rulesExample}>例：表示「3」の恐竜を5個消す → 15点 + ボーナス<Text style={styles.rulesBold}>+50 = 65点</Text></Text>
-                  <Text style={styles.rulesExample}>例：表示「6」の恐竜を6個消す → <Text style={styles.rulesBold}>36点</Text>（ボーナスなし）</Text>
-                </View>
                 <Text style={styles.rulesText}>
                   グループが大きいほど、また表示数値が大きい恐竜ほど<Text style={styles.rulesBold}>高得点</Text>！
                 </Text>
                 <Text style={styles.rulesTip}>
-                  ✨ <Text style={styles.rulesBold}>ボーナス</Text>{'\n'}
-                  必要数の1.5倍以上つなげると<Text style={styles.rulesBold}>固定ボーナス</Text>加算！{'\n'}
-                  難しい恐竜ほど高ボーナス（+10〜+1500）{'\n\n'}
-                  📈 <Text style={styles.rulesBold}>レベル係数</Text>：LVが上がるほどスコアUP{'\n'}
-                  LV50で2倍、LV100で3倍！
+                  ✨ <Text style={styles.rulesBold}>レアボーナス</Text>{'\n'}
+                  スピノサウルス以上の恐竜を消すとレアボーナス加算！{'\n'}
+                  難しい恐竜ほど高ボーナス{'\n\n'}
+                  📈 <Text style={styles.rulesBold}>レベル係数</Text>：LV50以降スコアUP{'\n'}
+                  LV100で1.75倍、LV150で2.5倍！
                 </Text>
                 <Text style={styles.rulesTip}>
                   💡 ティラノサウルス（表示1）は1個から消せるので詰まったときの救済にも！
@@ -1053,6 +1150,7 @@ export default function GameScreen() {
                     ['LV3〜', '🗑DEL', '好きな1マスを消去。LVアップごとに+1'],
                     ['LV5〜', '🔀MIX', 'グリッド全体をシャッフル'],
                     ['LV10〜', '🔄CHG', '1種類を基本6種のどれかに全変換'],
+                    ['LV20〜', '💥ALL', '1種類の恐竜を盤面から全消去'],
                   ].map(([lv, btn, effect], i) => (
                     <View key={i} style={styles.rulesTableRow}>
                       <Text style={styles.rulesTableCell}>{lv}</Text>
@@ -1062,9 +1160,9 @@ export default function GameScreen() {
                   ))}
                 </View>
                 <Text style={styles.rulesTip}>
-                  💡 DEL・MIX・CHGが残っているとゲームオーバーを回避！{'\n'}
+                  💡 DEL・MIX・CHG・ALLが残っているとゲームオーバーを回避！{'\n'}
                   ボタンが光ったら使いどき！{'\n'}
-                  🔁 DEL×10 → CHG×1 に交換も可能！
+                  🔁 DEL×10 → CHG×1、DEL×15 → ALL×1 に交換可能！
                 </Text>
               </View>)}
 
@@ -1086,8 +1184,8 @@ export default function GameScreen() {
                     ['LV15', 'モササウルス', '9', '9個'],
                     ['LV20', 'アンキロ', '10', '10個'],
                     ['LV25', 'マイアサウラ', '11', '11個'],
-                    ['LV30', 'マンモス', '12', '12個'],
-                    ['LV35', 'ヒト', '13', '13個'],
+                    ['LV30', 'ケツァルコアトル', '12', '12個'],
+                    ['LV35', 'マンモス', '13', '13個'],
                   ].map(([lv, name, num, req], i) => (
                     <View key={i} style={styles.rulesTableRow}>
                       <Text style={styles.rulesTableCell}>{lv}</Text>
@@ -1110,6 +1208,13 @@ export default function GameScreen() {
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>📋 更新履歴</Text>
                 <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>v5.1.0</Text>（2026/04/XX）{'\n'}
+                  ・一括消去ボタン（ALL）追加{'\n'}
+                  ・新恐竜アンロック演出をフッター演出に変更{'\n'}
+                  ・高レベル恐竜の報酬バランス見直し{'\n'}
+                  ・落下アニメーション追加{'\n'}
+                  ・タッチ判定改善{'\n'}
+                  {'\n'}
                   <Text style={styles.rulesBold}>v5.0.1</Text>（2026/03/25）{'\n'}
                   ・新キャラ追加：マイアサウラ、ヤマタノオロチ（全19種）{'\n'}
                   ・ランキング：デイリー/週間/月間の3タブに変更{'\n'}
@@ -1260,6 +1365,22 @@ export default function GameScreen() {
                   >
                     <Text style={[styles.toggleText, settings.hapticsOn && styles.toggleTextOn]}>
                       {settings.hapticsOn ? 'ON' : 'OFF'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={styles.settingDivider} />
+
+              {/* Drop Animation */}
+              <View style={styles.settingSection}>
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>🫧 落下アニメ</Text>
+                  <TouchableOpacity
+                    style={[styles.toggleBtn, settings.dropAnimation ? styles.toggleOn : styles.toggleOff]}
+                    onPress={() => updateSettings({ dropAnimation: !settings.dropAnimation })}
+                  >
+                    <Text style={[styles.toggleText, settings.dropAnimation && styles.toggleTextOn]}>
+                      {settings.dropAnimation ? 'ON' : 'OFF'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1496,31 +1617,34 @@ function PopupBar({
   setterRef,
   eraserMode,
   henkouMode,
+  allMode,
   onCancelMode,
   styles: s,
 }: {
   setterRef: React.MutableRefObject<(text: string | null) => void>;
   eraserMode: boolean;
   henkouMode: boolean;
+  allMode: boolean;
   onCancelMode: () => void;
   styles: any;
 }) {
   const [text, setText] = React.useState<string | null>(null);
   setterRef.current = setText;
 
+  const isMode = eraserMode || henkouMode || allMode;
   return (
     <View style={[
       s.modeIndicator,
       text ? s.modePopup :
-      (eraserMode || henkouMode) ? undefined :
+      isMode ? undefined :
       s.modeHidden,
     ]}>
       {text ? (
         <Text style={s.popupInlineText}>{text}</Text>
-      ) : (eraserMode || henkouMode) ? (
+      ) : isMode ? (
         <>
           <Text style={s.modeText}>
-            {eraserMode ? '🔴 DEL: 消したいセルをタップ' : '🟡 CHG: 変換する恐竜をタップ'}
+            {eraserMode ? '🔴 DEL: 消したいセルをタップ' : henkouMode ? '🟡 CHG: 変換する恐竜をタップ' : '🔴 ALL: 全消去する恐竜をタップ'}
           </Text>
           <TouchableOpacity onPress={onCancelMode}>
             <Text style={s.modeCancelText}>キャンセル</Text>
@@ -1569,7 +1693,7 @@ const styles = StyleSheet.create({
   dotFlash: { backgroundColor: '#FBBF24' },
 
   // Items row (row 2)
-  itemsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  itemsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 
 
   actionBtn: { borderRadius: 10, paddingVertical: 7, paddingHorizontal: 12 },
@@ -1587,7 +1711,7 @@ const styles = StyleSheet.create({
   itemBtnActive: { backgroundColor: '#f59e0b', borderWidth: 2, borderColor: '#d97706' },
   itemBtnSelected: { backgroundColor: '#ef4444', borderColor: '#b91c1c' },
   itemBtnFlash: { backgroundColor: '#fbbf24', borderColor: '#f59e0b' },
-  itemBtnText: { fontWeight: '900', fontSize: 15 },
+  itemBtnText: { fontWeight: '900', fontSize: 13 },
   itemBtnTextDisabled: { color: 'rgba(0,0,0,0.35)' },
   itemBtnTextActive: { color: '#fff' },
 
@@ -1674,6 +1798,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   footerIconLocked: { backgroundColor: 'rgba(0,0,0,0.15)' },
+  footerIconPulse: { borderColor: '#f59e0b', borderWidth: 2, backgroundColor: 'rgba(245,158,11,0.2)' },
   footerIcon: { width: '82%', height: '82%' },
   lockedText: { fontSize: 16, fontWeight: '900', color: 'rgba(0,0,0,0.3)' },
 

@@ -19,7 +19,10 @@ export async function loadGameState(): Promise<GameState | null> {
   try {
     const raw = await AsyncStorage.getItem(GAME_STATE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as GameState;
+    const state = JSON.parse(raw) as GameState;
+    // Backward compat: allCount added in v5.1
+    if (state.allCount === undefined) state.allCount = 0;
+    return state;
   } catch (e) {
     console.warn('Failed to load game state:', e);
     return null;

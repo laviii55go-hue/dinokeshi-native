@@ -46,17 +46,23 @@ export function createGrid(level: number, maxInitBombs = 1): Cell[][] {
   return grid;
 }
 
+// ★ デバッグ用: 任意のレベルでゲーム開始（検証完了後に DEBUG_START_LEVEL = 0 に戻す）
+const DEBUG_START_LEVEL = 0; // 0 = 通常, 110 = LV110から開始 など
+
 export function createInitialState(): GameState {
+  const startLevel = DEBUG_START_LEVEL > 0 ? DEBUG_START_LEVEL : 1;
+  const types = availableDinoTypes(startLevel);
   return {
-    grid: createGrid(1, 1),
-    level: 1,
+    grid: createGrid(startLevel, 1),
+    level: startLevel,
     score: 0,
     erasedGroups: 0,
-    eraserCount: 0,
-    shuffleCount: 0,
-    henkouCount: 0,
+    eraserCount: DEBUG_START_LEVEL > 0 ? 10 : 0,
+    shuffleCount: DEBUG_START_LEVEL > 0 ? 5 : 0,
+    henkouCount: DEBUG_START_LEVEL > 0 ? 3 : 0,
+    allCount: DEBUG_START_LEVEL > 0 ? 2 : 0,
     running: true,
-    announcedTypes: [0, 1, 2, 3, 4, 5],
+    announcedTypes: types.map(t => t.type),
   };
 }
 
@@ -238,6 +244,22 @@ export function shuffleGrid(grid: Cell[][]): Cell[][] {
   return newGrid;
 }
 
+// --- Erase all of one type ---
+
+export function eraseAllOfType(grid: Cell[][], targetType: number): { newGrid: Cell[][], erasedCount: number } {
+  const newGrid = grid.map(row => [...row]);
+  let erasedCount = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (newGrid[r][c].type === targetType && !newGrid[r][c].bomb) {
+        newGrid[r][c] = { type: -1, bomb: false };
+        erasedCount++;
+      }
+    }
+  }
+  return { newGrid, erasedCount };
+}
+
 // --- Henkou (convert type) ---
 
 export function convertType(grid: Cell[][], fromType: number): Cell[][] {
@@ -261,66 +283,68 @@ export interface LevelUpResult {
   earnedEraser: boolean;
   earnedShuffle: boolean;
   earnedHenkou: boolean;
+  earnedAll: boolean;
   newTypes: number[]; // newly unlocked dino types
 }
 
 export function checkLevelUp(state: GameState): LevelUpResult {
   const needed = groupsNeeded(state.level);
   if (state.erasedGroups < needed) {
-    return { leveled: false, newLevel: state.level, earnedEraser: false, earnedShuffle: false, earnedHenkou: false, newTypes: [] };
+    return { leveled: false, newLevel: state.level, earnedEraser: false, earnedShuffle: false, earnedHenkou: false, earnedAll: false, newTypes: [] };
   }
 
   const newLevel = state.level + 1;
   const earnedEraser = newLevel >= 3;
   const earnedShuffle = newLevel >= 5 && newLevel % 2 === 0;
   const earnedHenkou = newLevel >= 10 && newLevel % 10 === 0;
+  const earnedAll = newLevel >= 20 && newLevel % 20 === 0;
 
   // Check newly unlocked types
   const oldTypeNums = availableDinoTypes(state.level).map(w => w.type);
   const newAllTypeNums = availableDinoTypes(newLevel).map(w => w.type);
   const newTypes = newAllTypeNums.filter(t => !oldTypeNums.includes(t));
 
-  return { leveled: true, newLevel, earnedEraser, earnedShuffle, earnedHenkou, newTypes };
+  return { leveled: true, newLevel, earnedEraser, earnedShuffle, earnedHenkou, earnedAll, newTypes };
 }
 
 // --- Score calculation ---
 
-// Fixed bonus: [threshold (minGroupSize * 1.5 rounded up), bonus points]
-const FIXED_BONUS: [number, number][] = [
-  [2, 10],     // type0  ティラノサウルス
-  [3, 20],     // type1  ブラキオサウルス
-  [5, 50],     // type2  プテラノドン
-  [6, 80],     // type3  トリケラトプス
-  [8, 120],    // type4  ステゴサウルス
-  [9, 160],    // type5  スピノサウルス
-  [11, 200],   // type6  アロサウルス
-  [12, 250],   // type7  パキケファロサウルス
-  [14, 300],   // type8  モササウルス
-  [15, 400],   // type9  アンキロサウルス
-  [17, 450],   // type10 マイアサウラ
-  [18, 500],   // type11 ケツァルコアトル
-  [20, 600],   // type12 マンモス
-  [21, 700],   // type13 ヒト
-  [23, 800],   // type14 ロボット
-  [24, 1000],  // type15 AI
-  [26, 1200],  // type16 エイリアン
-  [27, 1500],  // type17 ドラゴン
-  [29, 2000],  // type18 ヤマタノオロチ
-  [30, 2500],  // type19 ユニコーン
-  [32, 3000],  // type20 フェニックス
-  [33, 3500],  // type21 麒麟
-  [35, 5000],  // type22 神
+// Rare value per type: higher types get exponentially more reward
+const RARE_VALUE: number[] = [
+  0,    // type0  ティラノサウルス
+  0,    // type1  ブラキオサウルス
+  0,    // type2  プテラノドン
+  0,    // type3  トリケラトプス
+  0,    // type4  ステゴサウルス
+  3,    // type5  スピノサウルス
+  6,    // type6  アロサウルス
+  10,   // type7  パキケファロサウルス
+  16,   // type8  モササウルス
+  25,   // type9  アンキロサウルス
+  35,   // type10 マイアサウラ
+  50,   // type11 ケツァルコアトル
+  70,   // type12 マンモス
+  100,  // type13 ヒト
+  140,  // type14 ロボット
+  190,  // type15 AI
+  250,  // type16 エイリアン
+  330,  // type17 ドラゴン
+  430,  // type18 ヤマタノオロチ
+  550,  // type19 ユニコーン
+  700,  // type20 フェニックス
+  880,  // type21 麒麟
+  1100, // type22 神
 ];
 
 export type BonusLevel = 'none' | 'bonus';
 
 export function calcScore(erasedCount: number, cellType: number, level: number = 1): { pts: number; bonus: BonusLevel } {
   const base = erasedCount * (cellType + 1);
-  const [threshold, bonusPts] = FIXED_BONUS[cellType] ?? [Infinity, 0];
-  const hasBonus = erasedCount >= threshold;
-  let pts = base + (hasBonus ? bonusPts : 0);
-  // Level coefficient: score scales with level (LV50 = 2.0x, LV100 = 3.0x)
-  const levelMultiplier = 1 + level * 0.02;
+  const rare = erasedCount * (RARE_VALUE[cellType] ?? 0);
+  let pts = base + rare;
+  const hasBonus = rare > 0;
+  // Level coefficient: C案 — LV50未満は等倍、LV50以降 1 + (level-50) × 0.015
+  const levelMultiplier = level < 50 ? 1 : 1 + (level - 50) * 0.015;
   pts = Math.floor(pts * levelMultiplier);
   return { pts, bonus: hasBonus ? 'bonus' : 'none' };
 }

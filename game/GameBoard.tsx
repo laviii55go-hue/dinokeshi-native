@@ -11,6 +11,7 @@ interface Props {
   cellGap: number;
   numFontSize: number;
   dropAnimation: boolean;
+  convertedCells: Set<number>;
   highlightCells: Set<number>;
   explodingCells: Map<number, number>;
   explodePhase: number;
@@ -25,6 +26,7 @@ export const GameBoard = React.memo(function GameBoard({
   cellGap,
   numFontSize,
   dropAnimation,
+  convertedCells,
   highlightCells,
   explodingCells,
   explodePhase,
@@ -69,6 +71,7 @@ export const GameBoard = React.memo(function GameBoard({
                 cellSize={cellSize}
                 numFontSize={numFontSize}
                 dropAnimation={dropAnimation}
+                isConverted={convertedCells.has(key)}
                 isHighlight={highlightCells.has(key)}
                 isExploding={explodingCells.has(key)}
                 explodeDistance={explodingCells.get(key) ?? -1}

@@ -11,6 +11,7 @@ export interface GameState {
   eraserCount: number;
   shuffleCount: number;
   henkouCount: number;
+  allCount: number;         // ALL (erase all of one type) count
   running: boolean;
   announcedTypes: number[]; // character introductions shown
 }

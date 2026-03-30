@@ -21,6 +21,7 @@ interface Props {
   cellSize: number;
   numFontSize: number;
   dropAnimation: boolean;
+  isConverted: boolean;
   isHighlight: boolean;
   isExploding: boolean;
   explodeDistance: number; // Manhattan distance from bomb, -1 if not exploding
@@ -40,6 +41,7 @@ export const AnimatedCell = React.memo(function AnimatedCell({
   cellSize,
   numFontSize,
   dropAnimation,
+  isConverted,
   isHighlight,
   isExploding,
   explodeDistance,
@@ -56,7 +58,7 @@ export const AnimatedCell = React.memo(function AnimatedCell({
   const prevSig = React.useRef(cellSig(cell));
   const prevType = React.useRef(cell.type);
 
-  // Cell change detection: shrink-out old → appear new
+  // Cell change detection: drop animation for new/moved cells
   React.useEffect(() => {
     const newSig = cellSig(cell);
     if (newSig !== prevSig.current) {
@@ -64,12 +66,26 @@ export const AnimatedCell = React.memo(function AnimatedCell({
       prevSig.current = newSig;
       prevType.current = cell.type;
 
-      // Instant swap - no animation delay
-      translateY.value = 0;
+      if (cell.type >= 0 && dropAnimation && !isConverted) {
+        // Drop animation: fall from above
+        translateY.value = -cellSize * 0.5;
+        translateY.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.quad) });
+      } else {
+        translateY.value = 0;
+      }
       opacity.value = 1;
       scale.value = 1;
     }
   }, [cell.type, cell.bomb]);
+
+  // Converted flash (yellow border pulse)
+  const convertFlash = useSharedValue(0);
+  React.useEffect(() => {
+    if (isConverted) {
+      convertFlash.value = 1;
+      convertFlash.value = withTiming(0, { duration: 500, easing: Easing.out(Easing.quad) });
+    }
+  }, [isConverted]);
 
   // Highlight pulse
   React.useEffect(() => {
@@ -107,8 +123,9 @@ export const AnimatedCell = React.memo(function AnimatedCell({
     }
   }, [isExploding, explodePhase, explodeDistance]);
 
-  // Press gesture on UI thread
+  // Press gesture on UI thread (hitSlop expands tap area by 3px each side)
   const tapGesture = Gesture.Tap()
+    .hitSlop({ top: 3, bottom: 3, left: 3, right: 3 })
     .onEnd(() => {
       runOnJS(onPress)();
     });
@@ -119,6 +136,10 @@ export const AnimatedCell = React.memo(function AnimatedCell({
       { scale: scale.value },
     ],
     opacity: opacity.value,
+    ...(convertFlash.value > 0 ? {
+      borderWidth: 2,
+      borderColor: `rgba(245, 158, 11, ${convertFlash.value})`,
+    } : {}),
   }));
 
   // Colors based on state (computed on JS thread, cheap)
@@ -172,6 +193,7 @@ export const AnimatedCell = React.memo(function AnimatedCell({
     prev.cell.type === next.cell.type &&
     prev.cell.bomb === next.cell.bomb &&
     prev.dropAnimation === next.dropAnimation &&
+    prev.isConverted === next.isConverted &&
     prev.isHighlight === next.isHighlight &&
     prev.isExploding === next.isExploding &&
     prev.explodeDistance === next.explodeDistance &&
