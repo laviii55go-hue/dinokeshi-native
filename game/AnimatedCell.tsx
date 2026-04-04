@@ -78,15 +78,6 @@ export const AnimatedCell = React.memo(function AnimatedCell({
     }
   }, [cell.type, cell.bomb, cell.gen]);
 
-  // Converted flash (yellow border pulse)
-  const convertFlash = useSharedValue(0);
-  React.useEffect(() => {
-    if (isConverted) {
-      convertFlash.value = 1;
-      convertFlash.value = withTiming(0, { duration: 500, easing: Easing.out(Easing.quad) });
-    }
-  }, [isConverted]);
-
   // Highlight pulse
   React.useEffect(() => {
     if (isHighlight) {
@@ -136,10 +127,6 @@ export const AnimatedCell = React.memo(function AnimatedCell({
       { scale: scale.value },
     ],
     opacity: opacity.value,
-    ...(convertFlash.value > 0 ? {
-      borderWidth: 2,
-      borderColor: `rgba(245, 158, 11, ${convertFlash.value})`,
-    } : {}),
   }));
 
   // Colors based on state (computed on JS thread, cheap)
@@ -210,7 +197,7 @@ export const AnimatedCell = React.memo(function AnimatedCell({
 const s = StyleSheet.create({
   cell: {
     borderRadius: 3,
-    borderWidth: 0.5,
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

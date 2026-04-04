@@ -273,7 +273,7 @@ export function convertType(grid: Cell[][], fromType: number): Cell[][] {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
       if (newGrid[r][c].type === fromType && !newGrid[r][c].bomb)
-        newGrid[r][c] = { type: targetType, bomb: false, gen: ++cellGenCounter };
+        newGrid[r][c] = { type: targetType, bomb: false, gen: newGrid[r][c].gen };
   return newGrid;
 }
 

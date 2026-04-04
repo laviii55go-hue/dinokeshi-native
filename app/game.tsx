@@ -1827,7 +1827,7 @@ const styles = StyleSheet.create({
   // Cell styles are now in game/AnimatedCell.tsx
 
   // Footer
-  footerPanel: { alignItems: 'center', paddingBottom: 4, paddingTop: 0, width: '100%' },
+  footerPanel: { alignItems: 'center', paddingBottom: 4, paddingTop: 8, width: '100%' },
   footerLabelRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingVertical: 3, minHeight: 26,
