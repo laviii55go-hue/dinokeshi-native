@@ -26,7 +26,7 @@ const SE_SOURCES = {
   bonus: require('../assets/audio/se_bonus.mp3'),
   bonusBig: require('../assets/audio/se_bonus_big.mp3'),
   eraser: require('../assets/audio/se_eraser.mp3'),
-  shuffle: require('../assets/audio/se_shuffle.mp3'),
+  shuffle: require('../assets/audio/se_scratch.mp3'),
   henkou: require('../assets/audio/se_henkou.mp3'),
 };
 
@@ -66,7 +66,9 @@ let muted = false;
 
 function playSE(sound: Audio.Sound | null) {
   if (!sound || muted) return;
-  sound.replayAsync({ positionMillis: 0 }).catch(() => {});
+  sound.setPositionAsync(0)
+    .then(() => sound.playAsync())
+    .catch(() => sound.replayAsync?.({ positionMillis: 0 }).catch(() => {}));
 }
 
 export function playTick() { playSE(tickS); }

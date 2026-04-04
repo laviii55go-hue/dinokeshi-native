@@ -2,7 +2,7 @@
   "expo": {
     "name": "恐竜けし",
     "slug": "dinokeshi-native",
-    "version": "5.0.1",
+    "version": "5.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "dinokeshinative",
@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.laviii55.dinokeshi",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.laviii55.dinokeshi",
@@ -45,7 +48,7 @@
         "react-native-google-mobile-ads",
         {
           "androidAppId": "ca-app-pub-3965931075265436~9239267864",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+          "iosAppId": "ca-app-pub-3965931075265436~5307239594"
         }
       ],
       "expo-dev-client",

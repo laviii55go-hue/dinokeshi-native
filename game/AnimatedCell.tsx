@@ -31,7 +31,7 @@ interface Props {
 }
 
 function cellSig(cell: Cell): string {
-  return `${cell.type}:${cell.bomb}`;
+  return `${cell.type}:${cell.bomb}:${cell.gen ?? 0}`;
 }
 
 const WAVE_DELAY_PER_STEP = 20; // ms per distance unit
@@ -76,7 +76,7 @@ export const AnimatedCell = React.memo(function AnimatedCell({
       opacity.value = 1;
       scale.value = 1;
     }
-  }, [cell.type, cell.bomb]);
+  }, [cell.type, cell.bomb, cell.gen]);
 
   // Converted flash (yellow border pulse)
   const convertFlash = useSharedValue(0);
@@ -177,7 +177,9 @@ export const AnimatedCell = React.memo(function AnimatedCell({
         >
           {!isEmpty && !cell.bomb && (
             <>
-              <Image source={DINO_SOURCES[cell.type]} style={s.cellImage} contentFit="cover" />
+              {DINO_SOURCES[cell.type] != null && (
+                <Image source={DINO_SOURCES[cell.type]} style={s.cellImage} contentFit="cover" />
+              )}
               <Text style={[s.cellNum, { fontSize: numFontSize }]}>{cell.type + 1}</Text>
             </>
           )}
@@ -192,6 +194,7 @@ export const AnimatedCell = React.memo(function AnimatedCell({
   return (
     prev.cell.type === next.cell.type &&
     prev.cell.bomb === next.cell.bomb &&
+    (prev.cell.gen ?? 0) === (next.cell.gen ?? 0) &&
     prev.dropAnimation === next.dropAnimation &&
     prev.isConverted === next.isConverted &&
     prev.isHighlight === next.isHighlight &&

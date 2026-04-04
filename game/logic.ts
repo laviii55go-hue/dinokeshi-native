@@ -1,6 +1,8 @@
 import { COLS, ROWS, BOMB_BOARD_MAX, availableDinoTypes, bombProbability, groupsNeeded, type WeightedType } from './constants';
 import type { Cell, GameState } from './types';
 
+let cellGenCounter = 0;
+
 // --- Grid creation ---
 
 function countBombs(grid: Cell[][]): number {
@@ -25,7 +27,7 @@ function pickWeightedType(wTypes: WeightedType[]): number {
 function randomCell(wTypes: WeightedType[], allowBomb: boolean, bombProb: number): Cell {
   const type = pickWeightedType(wTypes);
   const bomb = allowBomb ? Math.random() < bombProb : false;
-  return { type, bomb };
+  return { type, bomb, gen: ++cellGenCounter };
 }
 
 export function createGrid(level: number, maxInitBombs = 1): Cell[][] {
@@ -162,7 +164,7 @@ export function applyGravityAndRefill(grid: Cell[][], level: number): Cell[][] {
     }
     let writeRow = ROWS - 1;
     for (const cell of existing) {
-      newGrid[writeRow][c] = { type: cell.type, bomb: cell.bomb };
+      newGrid[writeRow][c] = { type: cell.type, bomb: cell.bomb, gen: cell.gen };
       writeRow--;
     }
     for (let r = writeRow; r >= 0; r--) {
@@ -271,7 +273,7 @@ export function convertType(grid: Cell[][], fromType: number): Cell[][] {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
       if (newGrid[r][c].type === fromType && !newGrid[r][c].bomb)
-        newGrid[r][c] = { type: targetType, bomb: false };
+        newGrid[r][c] = { type: targetType, bomb: false, gen: ++cellGenCounter };
   return newGrid;
 }
 
@@ -343,8 +345,16 @@ export function calcScore(erasedCount: number, cellType: number, level: number =
   const rare = erasedCount * (RARE_VALUE[cellType] ?? 0);
   let pts = base + rare;
   const hasBonus = rare > 0;
-  // Level coefficient: C案 — LV50未満は等倍、LV50以降 1 + (level-50) × 0.015
-  const levelMultiplier = level < 50 ? 1 : 1 + (level - 50) * 0.015;
+  // Level coefficient: 段階的倍率（序盤から緩やかに上昇、LV50以降は2.0+漸増）
+  const levelMultiplier =
+    level < 3  ? 1 :
+    level < 5  ? 1.1 :
+    level < 10 ? 1.2 :
+    level < 20 ? 1.35 :
+    level < 30 ? 1.5 :
+    level < 40 ? 1.7 :
+    level < 50 ? 1.85 :
+    2.0 + (level - 50) * 0.015;
   pts = Math.floor(pts * levelMultiplier);
   return { pts, bonus: hasBonus ? 'bonus' : 'none' };
 }

@@ -48,14 +48,14 @@ export const DINO_UNLOCK_LV = [
   150,                         // 22:    神
 ];
 
-export const BOMB_BOARD_MAX = 2;
+export const BOMB_BOARD_MAX = 3;
 
 export function groupsNeeded(_level: number): number {
   return 10;
 }
 
-export function bombProbability(level: number): number {
-  return level <= 3 ? 0.03 : 0.02;
+export function bombProbability(_level: number): number {
+  return 0.03;
 }
 
 export interface WeightedType { type: number; weight: number; }

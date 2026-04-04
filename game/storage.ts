@@ -22,6 +22,13 @@ export async function loadGameState(): Promise<GameState | null> {
     const state = JSON.parse(raw) as GameState;
     // Backward compat: allCount added in v5.1
     if (state.allCount === undefined) state.allCount = 0;
+    // Assign gen to loaded cells so animation detection works
+    let gen = 0;
+    for (const row of state.grid) {
+      for (const cell of row) {
+        cell.gen = ++gen;
+      }
+    }
     return state;
   } catch (e) {
     console.warn('Failed to load game state:', e);

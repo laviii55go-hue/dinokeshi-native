@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import * as React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 
 import { useAd } from './AdContext';
 
@@ -20,7 +20,10 @@ if (!isExpoGo) {
 
 const BANNER_AD_UNIT = __DEV__ && TestIds
   ? TestIds.ADAPTIVE_BANNER
-  : 'ca-app-pub-3965931075265436/3839034274';
+  : Platform.select({
+      ios: 'ca-app-pub-3965931075265436/8034744202',
+      android: 'ca-app-pub-3965931075265436/3839034274',
+    }) ?? 'ca-app-pub-3965931075265436/3839034274';
 
 export function GlobalBanner() {
   const { isAdRemoved, isLoaded } = useAd();

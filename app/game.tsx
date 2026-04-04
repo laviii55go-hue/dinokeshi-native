@@ -113,6 +113,7 @@ export default function GameScreen() {
   const [rulesVisible, setRulesVisible] = React.useState(false);
   const [rulesPage, setRulesPage] = React.useState(0);
   const [newDinoHighlight, setNewDinoHighlight] = React.useState<number | null>(null);
+  const [dinoFlipRevealed, setDinoFlipRevealed] = React.useState(false);
   const footerPulseAnim = React.useRef(new Animated.Value(1)).current;
   const [dinoInfoPopup, setDinoInfoPopup] = React.useState<number | null>(null);
   const [menuVisible, setMenuVisible] = React.useState(false);
@@ -373,7 +374,7 @@ export default function GameScreen() {
         const leveled = ns.erasedGroups >= groupsNeeded(ns.level);
         ns = applyLevelUp(ns, false);
         let popMsg = `💥ALL +${totalPts}pts`;
-        if (result.bonus === 'bonus') { popMsg += ' ✨'; playBonus(); }
+        if (result.bonus === 'bonus') { popMsg += ' ✨'; }
         if (leveled) popMsg += ` 🎉 LV${ns.level}!`;
         deferPopup(popMsg, leveled ? 250 : 150);
         gsRef.current = ns;
@@ -414,7 +415,8 @@ export default function GameScreen() {
         setExplodePhase(0);
       }
 
-      // All grid work inside prev => to use latest grid
+      // Phase 1: Erase cells (show blank spaces)
+      let bombScore = 0;
       setGameState(prev => {
         if (!prev) return prev;
         const g = prev.grid;
@@ -422,8 +424,19 @@ export default function GameScreen() {
 
         const result = explodeBomb(g, r, c);
         const erased = eraseBombCells(g, result.destroyed);
-        const filled = applyGravityAndRefill(erased, prev.level);
-        const bombScore = result.destroyed.size * 2;
+        bombScore = result.destroyed.size * 2;
+        const ns: GameState = { ...prev, grid: erased };
+        gsRef.current = ns;
+        return ns;
+      });
+
+      // Blank pause: show empty cells before new panels drop
+      await delay(150);
+
+      // Phase 2: Gravity & refill (new panels drop in)
+      setGameState(prev => {
+        if (!prev) return prev;
+        const filled = applyGravityAndRefill(prev.grid, prev.level);
         let ns: GameState = {
           ...prev, grid: filled,
           score: prev.score + bombScore, erasedGroups: prev.erasedGroups + 1,
@@ -437,6 +450,12 @@ export default function GameScreen() {
         checkAfterErase(ns);
         return ns;
       });
+
+      // Wait for drop animation before showing popup
+      const dropDelay = s.dropAnimation ? 200 : 0;
+      if (dropDelay > 0) {
+        await delay(dropDelay);
+      }
       flushDeferredPopup();
       flushDeferredLevelUp();
       animatingRef.current = false;
@@ -473,7 +492,7 @@ export default function GameScreen() {
       const leveled = ns.erasedGroups >= groupsNeeded(ns.level);
       // Build popup message: score + bonus + level up combined
       let popMsg = `+${pts}pts`;
-      if (bonus === 'bonus') { popMsg += ' ✨ ボーナス!'; playBonus(); }
+      if (bonus === 'bonus') { popMsg += ' ✨ ボーナス!'; }
       ns = applyLevelUp(ns, false); // don't show popup inside
       if (leveled) popMsg += ` 🎉 LV${ns.level}!`;
       deferPopup(popMsg, leveled ? 250 : 150);
@@ -481,9 +500,20 @@ export default function GameScreen() {
       checkAfterErase(ns);
       return ns;
     });
-    animatingRef.current = false;
-    flushDeferredPopup();
-    flushDeferredLevelUp();
+    // Wait for drop animation (180ms) before showing score popup
+    // Skip delay when drop animation is OFF
+    const dropDelay = s.dropAnimation ? 200 : 0;
+    if (dropDelay > 0) {
+      setTimeout(() => {
+        animatingRef.current = false;
+        flushDeferredPopup();
+        flushDeferredLevelUp();
+      }, dropDelay);
+    } else {
+      animatingRef.current = false;
+      flushDeferredPopup();
+      flushDeferredLevelUp();
+    }
     // Feedback after state update (non-blocking)
     playErase();
     s.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -544,14 +574,15 @@ export default function GameScreen() {
         // Scroll to the new dino in footer and pulse the icon
         footerListRef.current?.scrollToOffset({ offset: pageIndex * gridMaxWidth, animated: true });
         setNewDinoHighlight(newType);
-        footerPulseAnim.setValue(1);
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(footerPulseAnim, { toValue: 1.3, duration: 400, useNativeDriver: true }),
-            Animated.timing(footerPulseAnim, { toValue: 1.0, duration: 400, useNativeDriver: true }),
-          ]),
-          { iterations: 3 },
-        ).start(() => setNewDinoHighlight(null));
+        footerPulseAnim.setValue(0);
+        setDinoFlipRevealed(false);
+        // カード回転: 前半でLV表示→90°で裏返し→後半で恐竜画像
+        Animated.timing(footerPulseAnim, { toValue: 0.5, duration: 350, useNativeDriver: true })
+          .start(() => {
+            setDinoFlipRevealed(true);
+            Animated.timing(footerPulseAnim, { toValue: 1, duration: 350, useNativeDriver: true })
+              .start(() => setNewDinoHighlight(null));
+          });
       }, 400);
     }
   };
@@ -891,12 +922,14 @@ export default function GameScreen() {
             renderItem={({ item: src, index: i }) => {
               const unlocked = level >= DINO_UNLOCK_LV[i];
               const isPulsing = newDinoHighlight === i;
+              // isPulsing中は前半LV表示→90°で切替→後半は恐竜画像
+              const showImage = isPulsing ? dinoFlipRevealed : unlocked;
               const iconContent = (
-                <View style={[styles.footerIconCard, !unlocked && styles.footerIconLocked, isPulsing && styles.footerIconPulse]}>
-                  {unlocked ? (
+                <View style={[styles.footerIconCard, !showImage && styles.footerIconLocked, isPulsing && styles.footerIconPulse]}>
+                  {showImage ? (
                     <Image source={src} style={styles.footerIcon} contentFit="contain" />
                   ) : (
-                    <Text style={styles.lockedText}>?</Text>
+                    <Text style={styles.lockedText}>LV{DINO_UNLOCK_LV[i]}</Text>
                   )}
                 </View>
               );
@@ -907,7 +940,14 @@ export default function GameScreen() {
                   onPress={() => unlocked && setDinoInfoPopup(i)}
                 >
                   {isPulsing ? (
-                    <Animated.View style={{ transform: [{ scale: footerPulseAnim }] }}>
+                    <Animated.View style={{
+                      transform: [{
+                        rotateY: footerPulseAnim.interpolate({
+                          inputRange: [0, 0.5, 1],
+                          outputRange: ['0deg', '90deg', '0deg'],
+                        }),
+                      }],
+                    }}>
                       {iconContent}
                     </Animated.View>
                   ) : iconContent}
@@ -1107,8 +1147,8 @@ export default function GameScreen() {
                   ✨ <Text style={styles.rulesBold}>レアボーナス</Text>{'\n'}
                   スピノサウルス以上の恐竜を消すとレアボーナス加算！{'\n'}
                   難しい恐竜ほど高ボーナス{'\n\n'}
-                  📈 <Text style={styles.rulesBold}>レベル係数</Text>：LV50以降スコアUP{'\n'}
-                  LV100で1.75倍、LV150で2.5倍！
+                  📈 <Text style={styles.rulesBold}>レベル係数</Text>：LV3からスコアUP{'\n'}
+                  LV3:1.1倍 → LV10:1.35倍 → LV30:1.7倍 → LV50+:2.0倍〜
                 </Text>
                 <Text style={styles.rulesTip}>
                   💡 ティラノサウルス（表示1）は1個から消せるので詰まったときの救済にも！
@@ -1121,17 +1161,17 @@ export default function GameScreen() {
                   🌋をタップすると、その噴火がある<Text style={styles.rulesBold}>縦一列＋横一列</Text>を一気に消します。
                 </Text>
                 <View style={styles.rulesDiagram}>
-                  <Text style={styles.rulesDiagramText}>
-                    {'   ↑\n'}
-                    {'←🌋→\n'}
-                    {'   ↓'}
-                  </Text>
+                  <View style={{ alignItems: 'center' }}>
+                    <Text style={styles.rulesDiagramText}>↑</Text>
+                    <Text style={styles.rulesDiagramText}>←🌋→</Text>
+                    <Text style={styles.rulesDiagramText}>↓</Text>
+                  </View>
                 </View>
                 <Text style={styles.rulesText}>
                   🌋 隣の噴火に連鎖して一気に爆発することも！
                 </Text>
                 <Text style={styles.rulesTip}>
-                  噴火はLV1〜3で多め、LV4以降は控えめに出現。盤上に最大2個。
+                  噴火はLV1〜3で多め。盤上に最大3個。
                 </Text>
               </View>)}
 
@@ -1208,7 +1248,16 @@ export default function GameScreen() {
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>📋 更新履歴</Text>
                 <Text style={styles.rulesText}>
-                  <Text style={styles.rulesBold}>v5.1.0</Text>（2026/04/XX）{'\n'}
+                  <Text style={styles.rulesBold}>v5.2.0</Text>（2026/04/04）{'\n'}
+                  ・スコアポップアップ表示タイミング改善{'\n'}
+                  ・序盤スコア倍率強化（LV3から段階的に上昇）{'\n'}
+                  ・火山爆発後の空白待機追加{'\n'}
+                  ・新恐竜登場時のカード回転演出{'\n'}
+                  ・未解放キャラに解放レベルを表示{'\n'}
+                  ・MIX効果音・ゲームオーバー音の改善{'\n'}
+                  ・同じ数字補充時の落下アニメーション修正{'\n'}
+                  {'\n'}
+                  <Text style={styles.rulesBold}>v5.1.0</Text>（2026/04/01）{'\n'}
                   ・一括消去ボタン（ALL）追加{'\n'}
                   ・新恐竜アンロック演出をフッター演出に変更{'\n'}
                   ・高レベル恐竜の報酬バランス見直し{'\n'}
@@ -1800,7 +1849,7 @@ const styles = StyleSheet.create({
   footerIconLocked: { backgroundColor: 'rgba(0,0,0,0.15)' },
   footerIconPulse: { borderColor: '#f59e0b', borderWidth: 2, backgroundColor: 'rgba(245,158,11,0.2)' },
   footerIcon: { width: '82%', height: '82%' },
-  lockedText: { fontSize: 16, fontWeight: '900', color: 'rgba(0,0,0,0.3)' },
+  lockedText: { fontSize: 11, fontWeight: '900', color: 'rgba(0,0,0,0.3)', textAlign: 'center' },
 
   // Popup
 

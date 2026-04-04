@@ -39,7 +39,7 @@ export default function HomeScreen() {
           <Text style={styles.primaryButtonText}>🦕 ゲームスタート</Text>
         </TouchableOpacity>
 
-        <Text style={styles.version}>v5.0.1</Text>
+        <Text style={styles.version}>v5.2.0</Text>
       </View>
     </View>
   );

@@ -1,6 +1,7 @@
 export interface Cell {
   type: number;   // dinosaur type 0-16
   bomb: boolean;  // is volcano bomb
+  gen?: number;   // generation counter for animation detection
 }
 
 export interface GameState {
