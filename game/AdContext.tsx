@@ -4,8 +4,8 @@ import { Alert } from 'react-native';
 
 import {
   initPurchases,
-  checkAdRemovalEntitlement,
-  purchaseAdRemoval,
+  checkPremiumEntitlement,
+  purchasePremium,
   restorePurchases,
   type PurchaseResult,
 } from './purchases';
@@ -13,23 +13,30 @@ import {
 const AD_REMOVED_KEY = 'dinoKeshiAdRemoved';
 
 interface AdContextType {
+  /** Premium (= 広告OFF + 復活特典) が有効か */
+  isPremium: boolean;
+  /** 後方互換: isPremium と同値 */
   isAdRemoved: boolean;
   isLoaded: boolean;
   setAdRemoved: (removed: boolean) => void;
+  buyPremium: () => Promise<void>;
+  /** @deprecated Use buyPremium */
   buyAdRemoval: () => Promise<void>;
   restore: () => Promise<void>;
 }
 
 const AdContext = React.createContext<AdContextType>({
+  isPremium: false,
   isAdRemoved: false,
   isLoaded: false,
   setAdRemoved: () => {},
+  buyPremium: async () => {},
   buyAdRemoval: async () => {},
   restore: async () => {},
 });
 
 export function AdProvider({ children }: { children: React.ReactNode }) {
-  const [isAdRemoved, setIsAdRemoved] = React.useState(false);
+  const [isPremium, setIsPremium] = React.useState(false);
   const [isLoaded, setIsLoaded] = React.useState(false);
 
   // Initialize on mount
@@ -38,16 +45,16 @@ export function AdProvider({ children }: { children: React.ReactNode }) {
       // 1. Check AsyncStorage first (instant)
       try {
         const val = await AsyncStorage.getItem(AD_REMOVED_KEY);
-        if (val === 'true') setIsAdRemoved(true);
+        if (val === 'true') setIsPremium(true);
       } catch {}
 
       // 2. Initialize RevenueCat
       await initPurchases();
 
       // 3. Verify with RevenueCat (source of truth)
-      const hasEntitlement = await checkAdRemovalEntitlement();
+      const hasEntitlement = await checkPremiumEntitlement();
       if (hasEntitlement) {
-        setIsAdRemoved(true);
+        setIsPremium(true);
         await AsyncStorage.setItem(AD_REMOVED_KEY, 'true');
       }
 
@@ -57,19 +64,19 @@ export function AdProvider({ children }: { children: React.ReactNode }) {
 
   // Persist when changed
   const setAdRemoved = React.useCallback(async (removed: boolean) => {
-    setIsAdRemoved(removed);
+    setIsPremium(removed);
     try {
       await AsyncStorage.setItem(AD_REMOVED_KEY, removed ? 'true' : 'false');
     } catch {}
   }, []);
 
-  // Purchase ad removal
-  const buyAdRemoval = React.useCallback(async () => {
+  // Purchase Premium
+  const buyPremium = React.useCallback(async () => {
     try {
-      const result = await purchaseAdRemoval();
+      const result = await purchasePremium();
       if (result.success) {
         await setAdRemoved(true);
-        Alert.alert('購入完了', '広告が削除されました！');
+        Alert.alert('購入完了', 'Premiumが有効になりました！\n広告OFF＋ゲームオーバー復活特典が使えます');
       } else if (result.reason !== 'cancelled') {
         Alert.alert('購入できませんでした', result.reason);
       }
@@ -83,15 +90,23 @@ export function AdProvider({ children }: { children: React.ReactNode }) {
     const success = await restorePurchases();
     if (success) {
       await setAdRemoved(true);
-      Alert.alert('復元完了', '広告削除が復元されました！');
+      Alert.alert('復元完了', 'Premiumが復元されました！');
     } else {
       Alert.alert('復元結果', '復元可能な購入が見つかりませんでした。');
     }
   }, [setAdRemoved]);
 
   const value = React.useMemo(
-    () => ({ isAdRemoved, isLoaded, setAdRemoved, buyAdRemoval, restore }),
-    [isAdRemoved, isLoaded, setAdRemoved, buyAdRemoval, restore]
+    () => ({
+      isPremium,
+      isAdRemoved: isPremium,
+      isLoaded,
+      setAdRemoved,
+      buyPremium,
+      buyAdRemoval: buyPremium,
+      restore,
+    }),
+    [isPremium, isLoaded, setAdRemoved, buyPremium, restore]
   );
 
   return <AdContext.Provider value={value}>{children}</AdContext.Provider>;

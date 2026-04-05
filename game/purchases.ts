@@ -26,8 +26,9 @@ if (!isExpoGo) {
 const IOS_API_KEY = '';
 const ANDROID_API_KEY = 'goog_IdlskbmqMfyQBZhEyUMaBazzyBj';
 
-// Product identifier for ad removal (set in RevenueCat dashboard & Google Play)
-export const AD_REMOVAL_PRODUCT_ID = 'ad_free_pack';
+// Product identifiers
+export const AD_REMOVAL_PRODUCT_ID = 'ad_free_pack';       // 旧300円（引き続き有効）
+export const PREMIUM_PRODUCT_ID = 'premium_pack';           // 新500円 Premium
 
 let initialized = false;
 
@@ -52,33 +53,39 @@ export async function initPurchases(): Promise<void> {
 }
 
 /**
- * Check if the user has active ad-removal entitlement.
- * Returns true if ads should be hidden.
+ * Check if the user has Premium entitlement.
+ * Both 'remove_ads' (旧300円) and 'premium' (新500円) count as Premium.
  */
-export async function checkAdRemovalEntitlement(): Promise<boolean> {
+export async function checkPremiumEntitlement(): Promise<boolean> {
   if (!Purchases || !initialized) return false;
   try {
     const customerInfo = await Purchases.getCustomerInfo();
-    return customerInfo.entitlements.active['remove_ads'] !== undefined;
+    const active = customerInfo.entitlements.active;
+    return active['remove_ads'] !== undefined || active['premium'] !== undefined;
   } catch (e) {
     console.warn('Failed to check entitlements:', e);
     return false;
   }
 }
 
+/** @deprecated Use checkPremiumEntitlement instead */
+export const checkAdRemovalEntitlement = checkPremiumEntitlement;
+
 /**
- * Fetch available packages for ad removal.
+ * Fetch available packages for Premium purchase.
  */
-export async function getAdRemovalOffering() {
+export async function getPremiumOffering() {
   if (!Purchases || !initialized) return null;
   try {
     const offerings = await Purchases.getOfferings();
     if (offerings.current) {
-      // Find the package that contains the ad removal product
+      // Try premium product first, fallback to ad_free_pack
       const pkg = offerings.current.availablePackages.find(
+        (p: any) => p.product.identifier === PREMIUM_PRODUCT_ID
+      ) || offerings.current.availablePackages.find(
         (p: any) => p.product.identifier === AD_REMOVAL_PRODUCT_ID
-      );
-      return pkg || offerings.current.availablePackages[0] || null;
+      ) || offerings.current.availablePackages[0] || null;
+      return pkg;
     }
     return null;
   } catch (e) {
@@ -87,26 +94,30 @@ export async function getAdRemovalOffering() {
   }
 }
 
+/** @deprecated Use getPremiumOffering instead */
+export const getAdRemovalOffering = getPremiumOffering;
+
 /**
- * Purchase the ad removal item.
- * Returns true if purchase succeeded and ads should be removed.
+ * Purchase Premium.
+ * Returns true if purchase succeeded.
  */
 export interface PurchaseResult {
   success: boolean;
   reason: string;
 }
 
-export async function purchaseAdRemoval(): Promise<PurchaseResult> {
+export async function purchasePremium(): Promise<PurchaseResult> {
   if (!Purchases || !initialized) {
     return { success: false, reason: 'ストアが初期化されていません' };
   }
   try {
-    const pkg = await getAdRemovalOffering();
+    const pkg = await getPremiumOffering();
     if (!pkg) {
       return { success: false, reason: '商品情報を取得できませんでした' };
     }
     const { customerInfo } = await Purchases.purchasePackage(pkg);
-    const hasEntitlement = customerInfo.entitlements.active['remove_ads'] !== undefined;
+    const active = customerInfo.entitlements.active;
+    const hasEntitlement = active['remove_ads'] !== undefined || active['premium'] !== undefined;
     if (hasEntitlement) {
       return { success: true, reason: 'ok' };
     }
@@ -119,15 +130,19 @@ export async function purchaseAdRemoval(): Promise<PurchaseResult> {
   }
 }
 
+/** @deprecated Use purchasePremium instead */
+export const purchaseAdRemoval = purchasePremium;
+
 /**
  * Restore previous purchases.
- * Returns true if ad removal entitlement is found.
+ * Returns true if Premium entitlement is found.
  */
 export async function restorePurchases(): Promise<boolean> {
   if (!Purchases || !initialized) return false;
   try {
     const customerInfo = await Purchases.restorePurchases();
-    return customerInfo.entitlements.active['remove_ads'] !== undefined;
+    const active = customerInfo.entitlements.active;
+    return active['remove_ads'] !== undefined || active['premium'] !== undefined;
   } catch (e) {
     console.warn('Restore failed:', e);
     return false;

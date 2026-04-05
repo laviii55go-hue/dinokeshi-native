@@ -40,6 +40,7 @@ import {
 } from '../game/logic';
 import { BGM_NAMES, getCurrentBGMIndex, loadSoundEffects, onBgmChange, playBomb, playBonus, playBonusBig, playErase, playEraser, playGameOver, playHenkou, playShuffle, playTick, setSoundVolume, startBGM, stopBGM, switchBGM } from '../game/sound';
 import { clearGameState, loadGameState, loadRankings, loadSettings, saveGameState, saveSettings, saveToRanking, type Settings } from '../game/storage';
+import { preloadRewardedAd, isRewardedAdReady, showRewardedAd } from '../game/RewardedAdManager';
 import type { Cell, GameState } from '../game/types';
 
 import { fetchGlobalRankings, submitGlobalScore, type GlobalRankEntry, type RankPeriod } from '../game/firebase';
@@ -108,6 +109,11 @@ export default function GameScreen() {
   const popupTextRef = React.useRef<string | null>(null);
   const popupSetterRef = React.useRef<(text: string | null) => void>(() => {});
   const [gameOverVisible, setGameOverVisible] = React.useState(false);
+  const [reviveModalVisible, setReviveModalVisible] = React.useState(false);
+  const hasUsedReviveRef = React.useRef(false);
+  const preGameOverStateRef = React.useRef<GameState | null>(null);
+  const [rewardAdReady, setRewardAdReady] = React.useState(false);
+  const [reviveLoading, setReviveLoading] = React.useState(false);
   const [settingsVisible, setSettingsVisible] = React.useState(false);
   const [rankingVisible, setRankingVisible] = React.useState(false);
   const [rulesVisible, setRulesVisible] = React.useState(false);
@@ -168,6 +174,9 @@ export default function GameScreen() {
       if (savedSettings.bgmOn) {
         try { await startBGM(); } catch {}
       }
+
+      // リワード広告プリロード
+      preloadRewardedAd();
     })();
     const unsub = onBgmChange(() => setBgmIndex(getCurrentBGMIndex()));
     return () => {
@@ -621,26 +630,96 @@ export default function GameScreen() {
     }, 0);
   };
 
-  const handleGameOver = async (state: GameState) => {
+  const handleGameOver = async (state: GameState, isRetire: boolean = false) => {
     settings.hapticsOn && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     playGameOver();
     await stopBGM();
     updateState({ running: false });
-    // Force save before clearing
+
+    // 復活未使用 かつ リタイアでない場合のみ復活モーダルを表示
+    if (!isRetire && !hasUsedReviveRef.current) {
+      // 復活前の盤面を保存（復活時にここに戻す）
+      preGameOverStateRef.current = { ...state };
+      setRewardAdReady(isRewardedAdReady());
+      setReviveModalVisible(true);
+      showPopup('GAME OVER', 3000);
+      return;
+    }
+
+    // 復活済み or 2回目 → 通常のゲームオーバー処理
+    await finalizeGameOver(state);
+  };
+
+  /** 通常のゲームオーバー確定処理（ランキング登録・モーダル表示） */
+  const finalizeGameOver = async (state: GameState) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     await clearGameState();
     await saveToRanking(state.score, state.level);
-    // Submit to global ranking if player name is set
     if (settings.playerName) {
       await submitGlobalScore(settings.playerName, state.score, state.level);
       setGameOverVisible(true);
     } else {
-      // No name: show name prompt first
       pendingScoreRef.current = { score: state.score, level: state.level };
       setGameOverNameInput('');
       setNamePromptVisible(true);
     }
     showPopup('GAME OVER', 3000);
+  };
+
+  /** 復活処理: アイテム付与してゲーム再開 */
+  const handleRevive = async () => {
+    const saved = preGameOverStateRef.current;
+    if (!saved) return;
+
+    hasUsedReviveRef.current = true;
+    setReviveModalVisible(false);
+
+    // DEL×1, MIX×1, CHG×1, ALL×1 を付与
+    const revived: GameState = {
+      ...saved,
+      eraserCount: saved.eraserCount + 1,
+      shuffleCount: saved.shuffleCount + 1,
+      henkouCount: saved.henkouCount + 1,
+      allCount: saved.allCount + 1,
+      running: true,
+    };
+    gsRef.current = revived;
+    setGameState(revived);
+    preGameOverStateRef.current = null;
+
+    if (settings.bgmOn) { try { await startBGM(); } catch {} }
+    showPopup('復活！ アイテムGET！', 2000);
+
+    // リワード広告を次回用にプリ���ード
+    preloadRewardedAd();
+  };
+
+  /** リワード広告を見て復活 */
+  const handleReviveWithAd = async () => {
+    setReviveLoading(true);
+    const rewarded = await showRewardedAd();
+    setReviveLoading(false);
+    if (rewarded) {
+      await handleRevive();
+    } else {
+      // 広告視聴をキャンセル → 復活モーダルに戻る
+      setRewardAdReady(isRewardedAdReady());
+    }
+  };
+
+  /** Premiumユーザーの復活（広告なし） */
+  const handleRevivePremium = async () => {
+    await handleRevive();
+  };
+
+  /** 復活せずにそのまま終了 */
+  const handleSkipRevive = async () => {
+    setReviveModalVisible(false);
+    const saved = preGameOverStateRef.current;
+    preGameOverStateRef.current = null;
+    if (saved) {
+      await finalizeGameOver(saved);
+    }
   };
 
   const submitNameAndScore = async (name: string) => {
@@ -656,11 +735,14 @@ export default function GameScreen() {
 
   const handleRestart = async () => {
     setGameOverVisible(false);
+    hasUsedReviveRef.current = false;
+    preGameOverStateRef.current = null;
     const initial = createInitialState();
     gsRef.current = initial;
     setGameState(initial);
     animatingRef.current = false;
     showPopup('ゲームスタート！');
+    preloadRewardedAd();
     if (settings.bgmOn) { try { await startBGM(); } catch {} }
   };
 
@@ -669,7 +751,7 @@ export default function GameScreen() {
     setMenuVisible(false);
     Alert.alert('リタイア', '本当にリタイアしますか？', [
       { text: 'キャンセル', style: 'cancel' },
-      { text: 'リタイア', style: 'destructive', onPress: () => handleGameOver(gameState) },
+      { text: 'リタイア', style: 'destructive', onPress: () => handleGameOver(gameState, true) },
     ]);
   };
 
@@ -979,6 +1061,61 @@ export default function GameScreen() {
         </TouchableOpacity>
       </Modal>}
 
+      {/* Revive Modal (復活選択) */}
+      {reviveModalVisible && <Modal visible={reviveModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>GAME OVER</Text>
+            <Text style={styles.modalScore}>スコア: {formatScore(score)}</Text>
+            <Text style={styles.modalLevel}>レベル: {level}</Text>
+
+            {adState.isPremium ? (
+              /* Premium ユーザー: 広告なしで復活 */
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: '#8b5cf6' }]}
+                onPress={handleRevivePremium}
+              >
+                <Text style={styles.modalBtnText}>💎 アイテムを使って再開</Text>
+              </TouchableOpacity>
+            ) : (
+              /* 無料ユーザー: リワード広告を見て���活 */
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: '#10b981', opacity: (rewardAdReady && !reviveLoading) ? 1 : 0.5 }]}
+                onPress={handleReviveWithAd}
+                disabled={!rewardAdReady || reviveLoading}
+              >
+                <Text style={styles.modalBtnText}>
+                  {reviveLoading ? '読み込み中...' : '🎬 広告を見てアイテムGET'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* 付与されるアイテム表示 */}
+            <View style={{ backgroundColor: '#f3f4f6', borderRadius: 12, padding: 10, width: '100%', alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151' }}>
+                DEL×1  MIX×1  CHG×1  ALL×1
+              </Text>
+              <Text style={{ fontSize: 12, color: '#6b7280' }}>を獲得してゲーム再開！</Text>
+            </View>
+
+            {/* そのまま終了 */}
+            <TouchableOpacity
+              style={[styles.modalBtn, styles.modalBtnSecondary]}
+              onPress={handleSkipRevive}
+            >
+              <Text style={styles.modalBtnTextSecondary}>そのまま終了</Text>
+            </TouchableOpacity>
+
+            {/* 無料ユーザーへのPremium訴求 */}
+            {!adState.isPremium && (
+              <Text style={{ fontSize: 12, color: '#8b5cf6', textAlign: 'center', fontWeight: '700' }}>
+                💎 Premiumなら広告なしで毎回アイテムGET！
+              </Text>
+            )}
+          </View>
+        </View>
+      </Modal>}
+
       {/* Name Prompt (on game over without player name) */}
       {namePromptVisible && <Modal visible={namePromptVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -1034,10 +1171,13 @@ export default function GameScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#f59e0b' }]} onPress={async () => {
               setGameOverVisible(false);
+              hasUsedReviveRef.current = false;
+              preGameOverStateRef.current = null;
               const initial = createInitialState();
               gsRef.current = initial;
               setGameState(initial);
               animatingRef.current = false;
+              preloadRewardedAd();
               const r = await loadRankings();
               setRankings(r);
               setRankTab('local');
@@ -1047,6 +1187,8 @@ export default function GameScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={[styles.modalBtn, styles.modalBtnSecondary]} onPress={async () => {
               setGameOverVisible(false);
+              hasUsedReviveRef.current = false;
+              preGameOverStateRef.current = null;
               const initial = createInitialState();
               gsRef.current = initial;
               setGameState(initial);
@@ -1248,6 +1390,11 @@ export default function GameScreen() {
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>📋 更新履歴</Text>
                 <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>v5.2.2</Text>（2026/04/05）{'\n'}
+                  ・ゲームオーバー時の復活機能追加（広告視聴でアイテムGET）{'\n'}
+                  ・Premium（広告OFF＋復活特典）追加{'\n'}
+                  ・リタイア時は復活モーダルを表示しないよう改善{'\n'}
+                  {'\n'}
                   <Text style={styles.rulesBold}>v5.2.0</Text>（2026/04/04）{'\n'}
                   ・スコアポップアップ表示タイミング改善{'\n'}
                   ・序盤スコア倍率強化（LV3から段階的に上昇）{'\n'}
@@ -1462,18 +1609,28 @@ export default function GameScreen() {
 
               <View style={styles.settingDivider} />
 
-              {/* Ad & Purchase */}
+              {/* Premium & Purchase */}
               <View style={styles.settingSection}>
-                <Text style={styles.settingLabel}>📢 広告</Text>
-                {adState.isAdRemoved ? (
-                  <Text style={[styles.settingSubLabel, { paddingVertical: 6 }]}>広告は削除済みです ✅</Text>
+                <Text style={styles.settingLabel}>💎 Premium</Text>
+                {adState.isPremium ? (
+                  <View style={{ paddingVertical: 6 }}>
+                    <Text style={[styles.settingSubLabel, { fontWeight: '700' }]}>Premium 有効 ✅</Text>
+                    <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                      広告OFF ＋ ゲームオーバー復活特典
+                    </Text>
+                  </View>
                 ) : (
-                  <TouchableOpacity
-                    style={[styles.nameSaveBtn, { marginTop: 6, alignSelf: 'flex-start' }]}
-                    onPress={adState.buyAdRemoval}
-                  >
-                    <Text style={styles.nameSaveBtnText}>広告を削除する</Text>
-                  </TouchableOpacity>
+                  <View style={{ marginTop: 6 }}>
+                    <TouchableOpacity
+                      style={[styles.nameSaveBtn, { alignSelf: 'flex-start', backgroundColor: '#8b5cf6' }]}
+                      onPress={adState.buyPremium}
+                    >
+                      <Text style={styles.nameSaveBtnText}>Premiumを購入する</Text>
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                      広告OFF ＋ ゲームオーバー復活特典
+                    </Text>
+                  </View>
                 )}
                 <TouchableOpacity
                   style={{ paddingVertical: 6 }}
@@ -1489,11 +1646,11 @@ export default function GameScreen() {
                 <View style={[styles.settingSubRow, { borderTopWidth: 1, borderTopColor: '#f3f4f6', marginTop: 6, paddingTop: 6 }]}>
                   <Text style={[styles.settingSubLabel, { color: '#d1d5db' }]}>🛠 デバッグ</Text>
                   <TouchableOpacity
-                    style={[styles.toggleBtn, !adState.isAdRemoved ? styles.toggleOn : styles.toggleOff]}
-                    onPress={() => adState.setAdRemoved(!adState.isAdRemoved)}
+                    style={[styles.toggleBtn, !adState.isPremium ? styles.toggleOn : styles.toggleOff]}
+                    onPress={() => adState.setAdRemoved(!adState.isPremium)}
                   >
-                    <Text style={[styles.toggleText, !adState.isAdRemoved && styles.toggleTextOn]}>
-                      {adState.isAdRemoved ? '広告OFF' : '広告ON'}
+                    <Text style={[styles.toggleText, !adState.isPremium && styles.toggleTextOn]}>
+                      {adState.isPremium ? 'Premium ON' : 'Premium OFF'}
                     </Text>
                   </TouchableOpacity>
                 </View>
