@@ -336,6 +336,13 @@ const RARE_VALUE: number[] = [
   700,  // type20 フェニックス
   880,  // type21 麒麟
   1100, // type22 神
+  1100, // type23 世界樹
+  1100, // type24 海
+  1100, // type25 大地
+  1100, // type26 空
+  1100, // type27 星
+  1100, // type28 虚無
+  1100, // type29 ∞
 ];
 
 export type BonusLevel = 'none' | 'bonus';

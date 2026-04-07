@@ -1390,6 +1390,10 @@ export default function GameScreen() {
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>📋 更新履歴</Text>
                 <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>v5.3.0</Text>（2026/04/07）{'\n'}
+                  ・新キャラ7体追加（世界樹・海・大地・空・星・虚無・∞）{'\n'}
+                  ・LV500まで解放キャラ拡張{'\n'}
+                  {'\n'}
                   <Text style={styles.rulesBold}>v5.2.2</Text>（2026/04/05）{'\n'}
                   ・ゲームオーバー時の復活機能追加（広告視聴でアイテムGET）{'\n'}
                   ・Premium（広告OFF＋復活特典）追加{'\n'}

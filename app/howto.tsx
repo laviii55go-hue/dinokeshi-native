@@ -4,6 +4,23 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 
 const CHANGELOG = [
   {
+    version: 'v5.3.0',
+    date: '2026.4.7',
+    changes: [
+      '新キャラ7体追加（世界樹・海・大地・空・星・虚無・∞）',
+      'LV500まで解放キャラ拡張',
+    ],
+  },
+  {
+    version: 'v5.2.2',
+    date: '2026.4.5',
+    changes: [
+      'ゲームオーバー時の復活機能追加（広告視聴でアイテムGET）',
+      'Premium（広告OFF＋復活特典）追加',
+      'リタイア時は復活モーダルを表示しないよう改善',
+    ],
+  },
+  {
     version: 'v5.2.0',
     date: '2026.4.4',
     changes: [
