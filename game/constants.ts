@@ -77,39 +77,42 @@ export function bombProbability(_level: number): number {
 export interface WeightedType { type: number; weight: number; }
 
 export function availableDinoTypes(level: number): WeightedType[] {
-  // LV50+: basic boost reduced, LV70+: further reduced
-  const t0cap = level >= 70 ? 1.8 : level >= 50 ? 2.2 : 3;
-  const t1cap = level >= 70 ? 1.5 : level >= 50 ? 1.8 : 2.5;
-  const baseW = level >= 70 ? 0.8 : level >= 50 ? 0.9 : 1;
+  // LV50+: basic boost reduced, LV70+: further reduced so rare dinos appear more
+  const t0cap = level >= 70 ? 1.2 : level >= 50 ? 2.2 : 3;
+  const t1cap = level >= 70 ? 1.0 : level >= 50 ? 1.8 : 2.5;
+  const baseW = level >= 70 ? 0.5 : level >= 50 ? 0.9 : 1;
+  const midW  = level >= 70 ? 0.6 : 0.5;    // types 6-8
+  const rareW = level >= 70 ? 0.3 : 0.15;   // types 9-15
+  const ultraW = level >= 70 ? 0.25 : 0.1;  // types 16+
   const result: WeightedType[] = [
     { type: 0, weight: Math.min(t0cap, 1 + level * 0.05) },   // ティラノ
     { type: 1, weight: Math.min(t1cap, 1 + level * 0.03) },   // ブラキオ
     { type: 2, weight: baseW }, { type: 3, weight: baseW },
     { type: 4, weight: baseW }, { type: 5, weight: baseW },
   ];
-  if (level >= DINO_UNLOCK_LV[6])  result.push({ type: 6,  weight: 0.5 });   // アロサウルス
-  if (level >= DINO_UNLOCK_LV[7])  result.push({ type: 7,  weight: 0.5 });   // パキケファロ
-  if (level >= DINO_UNLOCK_LV[8])  result.push({ type: 8,  weight: 0.5 });   // モササウルス
-  if (level >= DINO_UNLOCK_LV[9])  result.push({ type: 9,  weight: 0.15 });  // アンキロ
-  if (level >= DINO_UNLOCK_LV[10]) result.push({ type: 10, weight: 0.15 });  // マイアサウラ
-  if (level >= DINO_UNLOCK_LV[11]) result.push({ type: 11, weight: 0.15 });  // ケツァルコアトル
-  if (level >= DINO_UNLOCK_LV[12]) result.push({ type: 12, weight: 0.15 });  // マンモス
-  if (level >= DINO_UNLOCK_LV[13]) result.push({ type: 13, weight: 0.15 });  // ヒト
-  if (level >= DINO_UNLOCK_LV[14]) result.push({ type: 14, weight: 0.15 });  // ロボット
-  if (level >= DINO_UNLOCK_LV[15]) result.push({ type: 15, weight: 0.15 });  // AI
-  if (level >= DINO_UNLOCK_LV[16]) result.push({ type: 16, weight: 0.1 });   // エイリアン
-  if (level >= DINO_UNLOCK_LV[17]) result.push({ type: 17, weight: 0.1 });   // ドラゴン
-  if (level >= DINO_UNLOCK_LV[18]) result.push({ type: 18, weight: 0.1 });   // ヤマタノオロチ
-  if (level >= DINO_UNLOCK_LV[19]) result.push({ type: 19, weight: 0.1 });   // ユニコーン
-  if (level >= DINO_UNLOCK_LV[20]) result.push({ type: 20, weight: 0.1 });   // フェニックス
-  if (level >= DINO_UNLOCK_LV[21]) result.push({ type: 21, weight: 0.1 });   // 麒麟
-  if (level >= DINO_UNLOCK_LV[22]) result.push({ type: 22, weight: 0.1 });   // 神
-  if (level >= DINO_UNLOCK_LV[23]) result.push({ type: 23, weight: 0.1 });   // 世界樹
-  if (level >= DINO_UNLOCK_LV[24]) result.push({ type: 24, weight: 0.1 });   // 海
-  if (level >= DINO_UNLOCK_LV[25]) result.push({ type: 25, weight: 0.1 });   // 大地
-  if (level >= DINO_UNLOCK_LV[26]) result.push({ type: 26, weight: 0.1 });   // 空
-  if (level >= DINO_UNLOCK_LV[27]) result.push({ type: 27, weight: 0.1 });   // 星
-  if (level >= DINO_UNLOCK_LV[28]) result.push({ type: 28, weight: 0.1 });   // 虚無
-  if (level >= DINO_UNLOCK_LV[29]) result.push({ type: 29, weight: 0.1 });   // ∞
+  if (level >= DINO_UNLOCK_LV[6])  result.push({ type: 6,  weight: midW });   // アロサウルス
+  if (level >= DINO_UNLOCK_LV[7])  result.push({ type: 7,  weight: midW });   // パキケファロ
+  if (level >= DINO_UNLOCK_LV[8])  result.push({ type: 8,  weight: midW });   // モササウルス
+  if (level >= DINO_UNLOCK_LV[9])  result.push({ type: 9,  weight: rareW });  // アンキロ
+  if (level >= DINO_UNLOCK_LV[10]) result.push({ type: 10, weight: rareW });  // マイアサウラ
+  if (level >= DINO_UNLOCK_LV[11]) result.push({ type: 11, weight: rareW });  // ケツァルコアトル
+  if (level >= DINO_UNLOCK_LV[12]) result.push({ type: 12, weight: rareW });  // マンモス
+  if (level >= DINO_UNLOCK_LV[13]) result.push({ type: 13, weight: rareW });  // ヒト
+  if (level >= DINO_UNLOCK_LV[14]) result.push({ type: 14, weight: rareW });  // ロボット
+  if (level >= DINO_UNLOCK_LV[15]) result.push({ type: 15, weight: rareW });  // AI
+  if (level >= DINO_UNLOCK_LV[16]) result.push({ type: 16, weight: ultraW }); // エイリアン
+  if (level >= DINO_UNLOCK_LV[17]) result.push({ type: 17, weight: ultraW }); // ドラゴン
+  if (level >= DINO_UNLOCK_LV[18]) result.push({ type: 18, weight: ultraW }); // ヤマタノオロチ
+  if (level >= DINO_UNLOCK_LV[19]) result.push({ type: 19, weight: ultraW }); // ユニコーン
+  if (level >= DINO_UNLOCK_LV[20]) result.push({ type: 20, weight: ultraW }); // フェニックス
+  if (level >= DINO_UNLOCK_LV[21]) result.push({ type: 21, weight: ultraW }); // 麒麟
+  if (level >= DINO_UNLOCK_LV[22]) result.push({ type: 22, weight: ultraW }); // 神
+  if (level >= DINO_UNLOCK_LV[23]) result.push({ type: 23, weight: ultraW }); // 世界樹
+  if (level >= DINO_UNLOCK_LV[24]) result.push({ type: 24, weight: ultraW }); // 海
+  if (level >= DINO_UNLOCK_LV[25]) result.push({ type: 25, weight: ultraW }); // 大地
+  if (level >= DINO_UNLOCK_LV[26]) result.push({ type: 26, weight: ultraW }); // 空
+  if (level >= DINO_UNLOCK_LV[27]) result.push({ type: 27, weight: ultraW }); // 星
+  if (level >= DINO_UNLOCK_LV[28]) result.push({ type: 28, weight: ultraW }); // 虚無
+  if (level >= DINO_UNLOCK_LV[29]) result.push({ type: 29, weight: ultraW }); // ∞
   return result;
 }

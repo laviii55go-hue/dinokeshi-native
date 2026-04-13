@@ -20,7 +20,7 @@ if (!isExpoGo) {
 const REWARDED_AD_UNIT = __DEV__ && TestIds
   ? TestIds.REWARDED
   : Platform.select({
-      ios: 'ca-app-pub-3965931075265436/8696093335',
+      ios: 'ca-app-pub-3965931075265436/8486341785',
       android: 'ca-app-pub-3965931075265436/8696093335',
     }) ?? '';
 
@@ -74,11 +74,29 @@ export function isRewardedAdReady(): boolean {
 export function showRewardedAd(): Promise<boolean> {
   return new Promise((resolve) => {
     if (!rewardedAd || !isAdLoaded) {
-      resolve(false);
+      // 広告が読み込めていない → ユーザーのせいではないので報酬あり
+      resolve(true);
+      preloadRewardedAd();
       return;
     }
 
     let rewarded = false;
+    let settled = false;
+
+    const settle = (result: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      isAdLoaded = false;
+      preloadRewardedAd();
+      resolve(result);
+    };
+
+    // 15秒タイムアウト — 黒画面・フリーズ対策（ユーザーのせいではないので報酬あり）
+    const timer = setTimeout(() => {
+      console.warn('[RewardedAd] Timeout after 15s — granting reward');
+      settle(true);
+    }, 15000);
 
     // リワード獲得 — RewardedAdEventType
     const earnedSub = rewardedAd.addAdEventListener(
@@ -92,13 +110,19 @@ export function showRewardedAd(): Promise<boolean> {
       () => {
         earnedSub();
         closedSub();
-        isAdLoaded = false;
-        // 次回用にプリロード
-        preloadRewardedAd();
-        resolve(rewarded);
+        // ユーザーが自分で閉じた場合: EARNED_REWARDが発火していればtrue、していなければfalse
+        settle(rewarded);
       }
     );
 
-    rewardedAd.show();
+    // show()失敗 — 表示自体がエラーになった場合（ユーザーのせいではないので報酬あり）
+    try {
+      rewardedAd.show();
+    } catch (e) {
+      console.warn('[RewardedAd] show() failed:', e);
+      earnedSub();
+      closedSub();
+      settle(true);
+    }
   });
 }
