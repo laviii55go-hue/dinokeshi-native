@@ -87,6 +87,8 @@ export async function fetchGlobalRankings(period: RankPeriod = 'daily'): Promise
 // --- Submit score to global ranking ---
 
 export async function submitGlobalScore(name: string, score: number, level: number): Promise<boolean> {
+  // Guard: skip submission for invalid data
+  if (!name || name.trim().length < 1 || score <= 0 || level < 1) return false;
   try {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
