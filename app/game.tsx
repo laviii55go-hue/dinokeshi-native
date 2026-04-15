@@ -1069,7 +1069,7 @@ export default function GameScreen() {
             <Text style={styles.modalScore}>スコア: {formatScore(score)}</Text>
             <Text style={styles.modalLevel}>レベル: {level}</Text>
 
-            {adState.isPremium ? (
+            {adState.isPremium && Platform.OS !== "ios" ? (
               /* Premium ユーザー: 広告なしで復活 */
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: '#8b5cf6' }]}
@@ -1107,7 +1107,7 @@ export default function GameScreen() {
             </TouchableOpacity>
 
             {/* 無料ユーザーへのPremium訴求 */}
-            {!adState.isPremium && (
+            {!adState.isPremium && Platform.OS !== "ios" && (
               <Text style={{ fontSize: 12, color: '#8b5cf6', textAlign: 'center', fontWeight: '700' }}>
                 💎 Premiumなら広告なしで毎回アイテムGET！
               </Text>
@@ -1614,7 +1614,7 @@ export default function GameScreen() {
               <View style={styles.settingDivider} />
 
               {/* Premium & Purchase */}
-              <View style={styles.settingSection}>
+              {Platform.OS !== "ios" && <View style={styles.settingSection}>
                 <Text style={styles.settingLabel}>💎 Premium</Text>
                 {adState.isPremium ? (
                   <View style={{ paddingVertical: 6 }}>
@@ -1659,7 +1659,7 @@ export default function GameScreen() {
                   </TouchableOpacity>
                 </View>
                 )}
-              </View>
+              </View>}
 
               <TouchableOpacity style={styles.settingsCloseBtn} onPress={() => setSettingsVisible(false)}>
                 <Text style={styles.settingsCloseBtnText}>閉じる</Text>
