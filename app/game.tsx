@@ -1390,6 +1390,14 @@ export default function GameScreen() {
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>📋 更新履歴</Text>
                 <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>v5.3.3</Text>（2026/04/17）{'\n'}
+                  ・App Store言語設定を日本語に修正{'\n'}
+                  {'\n'}
+                  <Text style={styles.rulesBold}>v5.3.1</Text>（2026/04/13）{'\n'}
+                  ・Lv70以降の出現バランス調整（レア恐竜の出現率UP）{'\n'}
+                  ・広告読み込み失敗時にフリーズしないよう改善{'\n'}
+                  ・iOS版リワード広告の設定修正{'\n'}
+                  {'\n'}
                   <Text style={styles.rulesBold}>v5.3.0</Text>（2026/04/07）{'\n'}
                   ・新キャラ7体追加（世界樹・海・大地・空・星・虚無・∞）{'\n'}
                   ・LV500まで解放キャラ拡張{'\n'}

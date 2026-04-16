@@ -4,8 +4,15 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 
 const CHANGELOG = [
   {
+    version: 'v5.3.3',
+    date: '2026.4.17',
+    changes: [
+      'App Store言語設定を日本語に修正',
+    ],
+  },
+  {
     version: 'v5.3.1',
-    date: '2026.XX.XX',
+    date: '2026.4.13',
     changes: [
       'Lv70以降の出現バランス調整（レア恐竜の出現率UP）',
       '広告読み込み失敗時にフリーズしないよう改善',
