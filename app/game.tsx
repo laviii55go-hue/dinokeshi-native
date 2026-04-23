@@ -44,8 +44,12 @@ import { preloadRewardedAd, isRewardedAdReady, showRewardedAd } from '../game/Re
 import type { Cell, GameState } from '../game/types';
 
 import { fetchGlobalRankings, submitGlobalScore, type GlobalRankEntry, type RankPeriod } from '../game/firebase';
+import { getBgByLevel } from '../game/backgrounds';
 
 const BG_IMAGE = require('../assets/images/bg.png');
+
+// デバッグ用LV設定メニュー: true で有効化（通常は false）
+const DEBUG_LV_SETTER = false;
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 36) : 44;
 // Vertical budget reserved for header, items row, info bar, footer, banner, status bar
@@ -123,6 +127,7 @@ export default function GameScreen() {
   const footerPulseAnim = React.useRef(new Animated.Value(1)).current;
   const [dinoInfoPopup, setDinoInfoPopup] = React.useState<number | null>(null);
   const [menuVisible, setMenuVisible] = React.useState(false);
+  const [debugLvVisible, setDebugLvVisible] = React.useState(false);
   const [exchangeVisible, setExchangeVisible] = React.useState(false);
   const [namePromptVisible, setNamePromptVisible] = React.useState(false);
   const [gameOverNameInput, setGameOverNameInput] = React.useState('');
@@ -863,7 +868,7 @@ export default function GameScreen() {
   // ====== Render ======
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-    <ImageBackground source={BG_IMAGE} style={styles.screen} contentFit="cover">
+    <ImageBackground source={getBgByLevel(level)} style={styles.screen} contentFit="cover">
       <View style={{ paddingTop: STATUS_BAR_HEIGHT, flex: 1 }}>
         {/* Header */}
         <View style={[styles.headerCard, { marginHorizontal: horizontalPadding }]}>
@@ -1057,6 +1062,38 @@ export default function GameScreen() {
             <TouchableOpacity style={styles.menuItem} onPress={handleRetire}>
               <Text style={[styles.menuItemText, styles.menuItemDanger]}>🚪 リタイア</Text>
             </TouchableOpacity>
+            {DEBUG_LV_SETTER && <>
+              <View style={styles.menuDivider} />
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setDebugLvVisible(true); }}>
+                <Text style={styles.menuItemText}>🐛 LV設定（DEV）</Text>
+              </TouchableOpacity>
+            </>}
+          </View>
+        </TouchableOpacity>
+      </Modal>}
+
+      {/* Debug: Level Setter (DEBUG_LV_SETTER flag) */}
+      {DEBUG_LV_SETTER && debugLvVisible && <Modal visible={debugLvVisible} transparent animationType="fade">
+        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setDebugLvVisible(false)}>
+          <View style={[styles.menuPanel, { maxHeight: '80%' }]}>
+            <Text style={{ fontSize: 14, fontWeight: '700', textAlign: 'center', paddingVertical: 8, color: '#374151' }}>🐛 LV 変更（DEV）</Text>
+            <View style={styles.menuDivider} />
+            <ScrollView>
+              {[1, 30, 49, 50, 99, 100, 149, 150, 199, 200, 299, 300, 399, 400, 499, 500].map((lv, idx, arr) => (
+                <React.Fragment key={lv}>
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setGameState(prev => prev ? { ...prev, level: lv } : prev);
+                      setDebugLvVisible(false);
+                    }}
+                  >
+                    <Text style={styles.menuItemText}>LV {lv}</Text>
+                  </TouchableOpacity>
+                  {idx < arr.length - 1 && <View style={styles.menuDivider} />}
+                </React.Fragment>
+              ))}
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </Modal>}
@@ -1080,9 +1117,9 @@ export default function GameScreen() {
             ) : (
               /* 無料ユーザー: リワード広告を見て���活 */
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: '#10b981', opacity: (rewardAdReady && !reviveLoading) ? 1 : 0.5 }]}
+                style={[styles.modalBtn, { backgroundColor: '#10b981', opacity: reviveLoading ? 0.5 : 1 }]}
                 onPress={handleReviveWithAd}
-                disabled={!rewardAdReady || reviveLoading}
+                disabled={reviveLoading}
               >
                 <Text style={styles.modalBtnText}>
                   {reviveLoading ? '読み込み中...' : '🎬 広告を見てアイテムGET'}
@@ -1894,7 +1931,7 @@ const styles = StyleSheet.create({
 
   // Header
   headerCard: {
-    backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: 14, padding: 6, gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: 14, padding: 6, gap: 4,
   },
   // Nav row (row 1)
   navRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

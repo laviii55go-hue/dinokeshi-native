@@ -77,17 +77,20 @@ export function bombProbability(_level: number): number {
 export interface WeightedType { type: number; weight: number; }
 
 export function availableDinoTypes(level: number): WeightedType[] {
-  // LV50+: basic boost reduced, LV70+: further reduced so rare dinos appear more
-  const t0cap = level >= 70 ? 1.2 : level >= 50 ? 2.2 : 3;
-  const t1cap = level >= 70 ? 1.0 : level >= 50 ? 1.8 : 2.5;
-  const baseW = level >= 70 ? 0.5 : level >= 50 ? 0.9 : 1;
-  const midW  = level >= 70 ? 0.6 : 0.5;    // types 6-8
-  const rareW = level >= 70 ? 0.3 : 0.15;   // types 9-15
-  const ultraW = level >= 70 ? 0.25 : 0.1;  // types 16+
+  // LV50+: basic boost reduced
+  // LV70+: 1-4個で消せる恐竜（type 0-3）を厚くし、5-12個必要な恐竜を減らして詰み感を解消（v4）
+  const t0cap = level >= 70 ? 1.1 : level >= 50 ? 2.2 : 3;   // type 0 (1個): ティラノ
+  const t1cap = level >= 70 ? 1.3 : level >= 50 ? 1.8 : 2.5; // type 1 (2個): ブラキオ
+  const starW = level >= 70 ? 1.0 : level >= 50 ? 0.9 : 1;   // type 2 (3個): プテラ ★重点
+  const easyW = level >= 70 ? 0.85 : level >= 50 ? 0.9 : 1;  // type 3 (4個): トリケラ ★重点
+  const baseW = level >= 70 ? 0.55 : level >= 50 ? 0.9 : 1;  // type 4-5 (5-6個): ステゴ・スピノ
+  const midW  = level >= 70 ? 0.4 : 0.5;    // types 6-8 (7-9個)
+  const rareW = level >= 70 ? 0.18 : 0.15;  // types 9-15 (10-16個)
+  const ultraW = level >= 70 ? 0.15 : 0.1;  // types 16+ (17+個)
   const result: WeightedType[] = [
     { type: 0, weight: Math.min(t0cap, 1 + level * 0.05) },   // ティラノ
     { type: 1, weight: Math.min(t1cap, 1 + level * 0.03) },   // ブラキオ
-    { type: 2, weight: baseW }, { type: 3, weight: baseW },
+    { type: 2, weight: starW }, { type: 3, weight: easyW },
     { type: 4, weight: baseW }, { type: 5, weight: baseW },
   ];
   if (level >= DINO_UNLOCK_LV[6])  result.push({ type: 6,  weight: midW });   // アロサウルス

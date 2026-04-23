@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import * as React from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 
 import {
   initPurchases,
@@ -11,6 +12,32 @@ import {
 } from './purchases';
 
 const AD_REMOVED_KEY = 'dinoKeshiAdRemoved';
+const isExpoGo = Constants.appOwnership === 'expo';
+
+/**
+ * iOS: App Tracking Transparency プロンプト要求（初回起動時1回）→ AdMob SDK 初期化。
+ * Android: AdMob SDK 初期化のみ（ATTは iOS 固有のため Platform.OS でガード）。
+ * Expo Go では両方スキップ（native モジュール未バンドル）。
+ */
+async function initAdsAndTracking(): Promise<void> {
+  if (isExpoGo) return;
+
+  if (Platform.OS === 'ios') {
+    try {
+      const TrackingTransparency = require('expo-tracking-transparency');
+      await TrackingTransparency.requestTrackingPermissionsAsync();
+    } catch (e) {
+      console.warn('[Ads] ATT request failed:', e);
+    }
+  }
+
+  try {
+    const ads = require('react-native-google-mobile-ads');
+    await ads.default().initialize();
+  } catch (e) {
+    console.warn('[Ads] mobileAds().initialize() failed:', e);
+  }
+}
 
 interface AdContextType {
   /** Premium (= 広告OFF + 復活特典) が有効か */
@@ -48,10 +75,13 @@ export function AdProvider({ children }: { children: React.ReactNode }) {
         if (val === 'true') setIsPremium(true);
       } catch {}
 
-      // 2. Initialize RevenueCat
+      // 2. ATT prompt (iOS only) + AdMob SDK initialize
+      await initAdsAndTracking();
+
+      // 3. Initialize RevenueCat
       await initPurchases();
 
-      // 3. Verify with RevenueCat (source of truth)
+      // 4. Verify with RevenueCat (source of truth)
       const hasEntitlement = await checkPremiumEntitlement();
       if (hasEntitlement) {
         setIsPremium(true);
