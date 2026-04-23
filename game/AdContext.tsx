@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as React from 'react';
-import { Alert, Platform } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 
 import {
   initPurchases,
@@ -14,6 +14,26 @@ import {
 const AD_REMOVED_KEY = 'dinoKeshiAdRemoved';
 const isExpoGo = Constants.appOwnership === 'expo';
 
+// iOS ATT dialog is only presented while the app is in the `active` state.
+// During launch the app state is `inactive`, so calling the request too early
+// silently returns `undetermined` without showing the prompt.
+function waitForAppActive(timeoutMs = 3000): Promise<void> {
+  if (AppState.currentState === 'active') return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      sub.remove();
+      resolve();
+    }, timeoutMs);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        clearTimeout(timer);
+        sub.remove();
+        resolve();
+      }
+    });
+  });
+}
+
 /**
  * iOS: App Tracking Transparency プロンプト要求（初回起動時1回）→ AdMob SDK 初期化。
  * Android: AdMob SDK 初期化のみ（ATTは iOS 固有のため Platform.OS でガード）。
@@ -25,6 +45,7 @@ async function initAdsAndTracking(): Promise<void> {
   if (Platform.OS === 'ios') {
     try {
       const TrackingTransparency = require('expo-tracking-transparency');
+      await waitForAppActive();
       await TrackingTransparency.requestTrackingPermissionsAsync();
     } catch (e) {
       console.warn('[Ads] ATT request failed:', e);
