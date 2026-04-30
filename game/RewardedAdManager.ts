@@ -147,15 +147,20 @@ export async function showRewardedAd(): Promise<boolean> {
       settled = true;
       clearTimeout(timer);
       isAdLoaded = false;
+      // v1.5 修正：タイムアウト経路でもリスナーを必ず解除（残存で AdMob View 制御異常を防ぐ）
+      try { earnedSub && earnedSub(); } catch {}
+      try { closedSub && closedSub(); } catch {}
       preloadRewardedAd();
       resolve(result);
     };
 
-    // 15秒タイムアウト — 黒画面・フリーズ対策（ユーザーのせいではないので報酬あり）
+    // 45秒タイムアウト — 黒画面・フリーズ対策（ユーザーのせいではないので報酬あり）
+    // 旧15秒では iOS の通常リワード動画(30秒前後)完了前にタイムアウトし、
+    // settle(true)→handleRevive()→画面に戻れない問題を発生(2026/04/30 v1.5バグ修正)
     const timer = setTimeout(() => {
-      console.warn('[RewardedAd] Timeout after 15s — granting reward');
+      console.warn('[RewardedAd] Timeout after 45s — granting reward');
       settle(true);
-    }, 15000);
+    }, 45000);
 
     // リワード獲得 — RewardedAdEventType
     const earnedSub = rewardedAd.addAdEventListener(

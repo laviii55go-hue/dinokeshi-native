@@ -2,12 +2,11 @@
   "expo": {
     "name": "恐竜けし",
     "slug": "dinokeshi-native",
-    "version": "5.3.7",
+    "version": "5.3.8",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "dinokeshinative",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.laviii55.dinokeshi",
       "supportsTablet": true,

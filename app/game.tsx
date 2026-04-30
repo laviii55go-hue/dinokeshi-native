@@ -702,13 +702,17 @@ export default function GameScreen() {
   /** リワード広告を見て復活 */
   const handleReviveWithAd = async () => {
     setReviveLoading(true);
-    const rewarded = await showRewardedAd();
-    setReviveLoading(false);
-    if (rewarded) {
-      await handleRevive();
-    } else {
-      // 広告視聴をキャンセル → 復活モーダルに戻る
-      setRewardAdReady(isRewardedAdReady());
+    try {
+      const rewarded = await showRewardedAd();
+      if (rewarded) {
+        await handleRevive();
+      } else {
+        // 広告視聴をキャンセル → 復活モーダルに戻る
+        setRewardAdReady(isRewardedAdReady());
+      }
+    } finally {
+      // v1.5 修正：例外/タイムアウト発火時も必ずローディング解除（ボタン永久disabled対策）
+      setReviveLoading(false);
     }
   };
 

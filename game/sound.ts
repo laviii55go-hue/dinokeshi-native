@@ -1,14 +1,18 @@
-import { Audio } from 'expo-av';
+// SDK 55 対応：expo-av → expo-audio 移行（2026/04/30 v5.3.8 / v1.5）
+// 同期API（player.volume = N / player.play() / player.seekTo(0)）
+import { createAudioPlayer, setAudioModeAsync, AudioPlayer, AudioSource } from 'expo-audio';
 
 let soundVolume = 0.3;
-
-const allSounds = new Set<Audio.Sound>();
+let muted = false;
+const allPlayers = new Set<AudioPlayer>();
 
 export function setSoundVolume(v: number) {
   soundVolume = v;
   muted = v === 0;
-  for (const s of allSounds) {
-    s.setVolumeAsync(v).catch(() => {});
+  for (const p of allPlayers) {
+    try {
+      p.volume = v;
+    } catch {}
   }
 }
 
@@ -30,45 +34,58 @@ const SE_SOURCES = {
   henkou: require('../assets/audio/se_henkou.mp3'),
 };
 
-let tickS: Audio.Sound | null = null;
-let eraseS: Audio.Sound | null = null;
-let bombS: Audio.Sound | null = null;
-let gameoverS: Audio.Sound | null = null;
-let bonusS: Audio.Sound | null = null;
-let bonusBigS: Audio.Sound | null = null;
-let eraserS: Audio.Sound | null = null;
-let shuffleS: Audio.Sound | null = null;
-let henkouS: Audio.Sound | null = null;
+let tickS: AudioPlayer | null = null;
+let eraseS: AudioPlayer | null = null;
+let bombS: AudioPlayer | null = null;
+let gameoverS: AudioPlayer | null = null;
+let bonusS: AudioPlayer | null = null;
+let bonusBigS: AudioPlayer | null = null;
+let eraserS: AudioPlayer | null = null;
+let shuffleS: AudioPlayer | null = null;
+let henkouS: AudioPlayer | null = null;
 let seLoaded = false;
 
 export async function loadSoundEffects() {
   if (seLoaded) return;
   try {
-    const vol = soundVolume; // capture current volume at load time
-    const load = async (src: any) => {
-      const { sound } = await Audio.Sound.createAsync(src, { volume: vol });
-      allSounds.add(sound);
-      return sound;
+    await setAudioModeAsync({ playsInSilentMode: true });
+    const vol = soundVolume;
+    const load = (src: AudioSource): AudioPlayer => {
+      const player = createAudioPlayer(src);
+      try {
+        player.volume = vol;
+      } catch {}
+      allPlayers.add(player);
+      return player;
     };
-    [tickS, eraseS, bombS, gameoverS, bonusS, bonusBigS, eraserS, shuffleS, henkouS] =
-      await Promise.all([
-        load(SE_SOURCES.tick), load(SE_SOURCES.erase), load(SE_SOURCES.bomb),
-        load(SE_SOURCES.gameover), load(SE_SOURCES.bonus), load(SE_SOURCES.bonusBig),
-        load(SE_SOURCES.eraser), load(SE_SOURCES.shuffle), load(SE_SOURCES.henkou),
-      ]);
+    tickS = load(SE_SOURCES.tick);
+    eraseS = load(SE_SOURCES.erase);
+    bombS = load(SE_SOURCES.bomb);
+    gameoverS = load(SE_SOURCES.gameover);
+    bonusS = load(SE_SOURCES.bonus);
+    bonusBigS = load(SE_SOURCES.bonusBig);
+    eraserS = load(SE_SOURCES.eraser);
+    shuffleS = load(SE_SOURCES.shuffle);
+    henkouS = load(SE_SOURCES.henkou);
     seLoaded = true;
   } catch (e) {
     console.warn('SE load failed:', e);
   }
 }
 
-let muted = false;
-
-function playSE(sound: Audio.Sound | null) {
-  if (!sound || muted) return;
-  sound.setPositionAsync(0)
-    .then(() => sound.playAsync())
-    .catch(() => sound.replayAsync?.({ positionMillis: 0 }).catch(() => {}));
+function playSE(player: AudioPlayer | null) {
+  if (!player || muted) return;
+  try {
+    // seekTo は Promise を返すため then チェーンで play を確実に再開（旧 expo-av: setPositionAsync().then(playAsync) と同パターン）
+    player.seekTo(0).then(() => {
+      try { player.play(); } catch {}
+    }).catch(() => {
+      // seek失敗時もとりあえず再生試行（連続押し時など）
+      try { player.play(); } catch {}
+    });
+  } catch (e) {
+    // フォールバック：再生失敗時は無視（ユーザー体験を妨げないため）
+  }
 }
 
 export function playTick() { playSE(tickS); }
@@ -83,7 +100,7 @@ export function playGameOver() { playSE(gameoverS); }
 
 // ---- BGM ----
 
-let bgmSound: Audio.Sound | null = null;
+let bgmPlayer: AudioPlayer | null = null;
 let currentBgmIndex = 0;
 let bgmChangeListeners: (() => void)[] = [];
 
@@ -107,12 +124,13 @@ export async function startBGM(index?: number) {
   try {
     await stopBGM();
     if (index !== undefined) currentBgmIndex = index;
-    const { sound } = await Audio.Sound.createAsync(
-      BGM_SOURCES[currentBgmIndex],
-      { isLooping: true, volume: 0.38 }
-    );
-    bgmSound = sound;
-    await bgmSound.playAsync();
+    const player = createAudioPlayer(BGM_SOURCES[currentBgmIndex]);
+    try {
+      player.volume = 0.38;
+      player.loop = true;
+    } catch {}
+    bgmPlayer = player;
+    player.play();
     bgmChangeListeners.forEach(fn => fn());
   } catch (e) {
     console.warn('BGM start failed:', e);
@@ -121,10 +139,14 @@ export async function startBGM(index?: number) {
 
 export async function stopBGM() {
   try {
-    if (bgmSound) {
-      await bgmSound.stopAsync();
-      await bgmSound.unloadAsync();
-      bgmSound = null;
+    if (bgmPlayer) {
+      try {
+        bgmPlayer.pause();
+      } catch {}
+      try {
+        bgmPlayer.remove();
+      } catch {}
+      bgmPlayer = null;
     }
   } catch {}
 }
