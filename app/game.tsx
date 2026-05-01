@@ -1431,6 +1431,9 @@ export default function GameScreen() {
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>📋 更新履歴</Text>
                 <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>v5.3.9</Text>（2026/05/01）{'\n'}
+                  ・リワード広告の安定性向上・iOS 26（SDK 55）対応{'\n'}
+                  {'\n'}
                   <Text style={styles.rulesBold}>v5.3.3</Text>（2026/04/17）{'\n'}
                   ・App Store言語設定を日本語に修正{'\n'}
                   {'\n'}
