@@ -1,4 +1,4 @@
-import { COLS, ROWS, BOMB_BOARD_MAX, availableDinoTypes, bombProbability, groupsNeeded, type WeightedType } from './constants';
+import { COLS, ROWS, START_LEVEL_PRESETS, availableDinoTypes, bombBoardMax, bombProbability, groupsNeeded, type StartLevelPreset, type WeightedType } from './constants';
 import type { Cell, GameState } from './types';
 
 let cellGenCounter = 0;
@@ -51,18 +51,25 @@ export function createGrid(level: number, maxInitBombs = 1): Cell[][] {
 // ★ デバッグ用: 任意のレベルでゲーム開始（検証完了後に DEBUG_START_LEVEL = 0 に戻す）
 const DEBUG_START_LEVEL = 0; // 0 = 通常, 110 = LV110から開始 など
 
-export function createInitialState(): GameState {
-  const startLevel = DEBUG_START_LEVEL > 0 ? DEBUG_START_LEVEL : 1;
-  const types = availableDinoTypes(startLevel);
+export function createInitialState(startLevel: number = 1): GameState {
+  const actualStartLevel = DEBUG_START_LEVEL > 0 ? DEBUG_START_LEVEL : startLevel;
+  const preset = START_LEVEL_PRESETS[actualStartLevel as StartLevelPreset];
+  const score = preset?.score ?? 0;
+  const eraserCount = preset?.eraserCount ?? (DEBUG_START_LEVEL > 0 ? 10 : 0);
+  const shuffleCount = preset?.shuffleCount ?? (DEBUG_START_LEVEL > 0 ? 5 : 0);
+  const henkouCount = preset?.henkouCount ?? (DEBUG_START_LEVEL > 0 ? 3 : 0);
+  const allCount = preset?.allCount ?? (DEBUG_START_LEVEL > 0 ? 2 : 0);
+  const startLevelForGrid = Math.max(1, actualStartLevel);
+  const types = availableDinoTypes(startLevelForGrid);
   return {
-    grid: createGrid(startLevel, 1),
-    level: startLevel,
-    score: 0,
+    grid: createGrid(startLevelForGrid, 1),
+    level: startLevelForGrid,
+    score,
     erasedGroups: 0,
-    eraserCount: DEBUG_START_LEVEL > 0 ? 10 : 0,
-    shuffleCount: DEBUG_START_LEVEL > 0 ? 5 : 0,
-    henkouCount: DEBUG_START_LEVEL > 0 ? 3 : 0,
-    allCount: DEBUG_START_LEVEL > 0 ? 2 : 0,
+    eraserCount,
+    shuffleCount,
+    henkouCount,
+    allCount,
     running: true,
     announcedTypes: types.map(t => t.type),
   };
@@ -168,7 +175,7 @@ export function applyGravityAndRefill(grid: Cell[][], level: number): Cell[][] {
       writeRow--;
     }
     for (let r = writeRow; r >= 0; r--) {
-      const cell = randomCell(types, bombCount < BOMB_BOARD_MAX, prob);
+      const cell = randomCell(types, bombCount < bombBoardMax(level), prob);
       if (cell.bomb) bombCount++;
       newGrid[r][c] = cell;
     }

@@ -4,6 +4,7 @@ import type { GameState } from './types';
 const GAME_STATE_KEY = 'dinoKeshiGameState';
 const RANKING_KEY = 'dinoKeshiRanking';
 const SETTINGS_KEY = 'dinoKeshiSettings';
+const MAX_REACHED_LEVEL_KEY = 'dinoKeshiMaxReachedLevel';
 
 // --- Game state persistence ---
 
@@ -41,6 +42,28 @@ export async function clearGameState() {
     await AsyncStorage.removeItem(GAME_STATE_KEY);
   } catch (e) {
     console.warn('Failed to clear game state:', e);
+  }
+}
+
+// --- Max reached level ---
+
+export async function getMaxReachedLevel(): Promise<number> {
+  try {
+    const raw = await AsyncStorage.getItem(MAX_REACHED_LEVEL_KEY);
+    const level = raw ? Number(raw) : 1;
+    return Number.isFinite(level) && level > 0 ? Math.floor(level) : 1;
+  } catch {
+    return 1;
+  }
+}
+
+export async function setMaxReachedLevel(level: number): Promise<void> {
+  try {
+    const current = await getMaxReachedLevel();
+    const next = Math.max(current, Math.floor(level), 1);
+    await AsyncStorage.setItem(MAX_REACHED_LEVEL_KEY, String(next));
+  } catch (e) {
+    console.warn('Failed to save max reached level:', e);
   }
 }
 
