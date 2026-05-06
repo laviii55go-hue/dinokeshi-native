@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { COLS, DINO_EMOJI, DINO_NAMES, DINO_UNLOCK_LV, groupsNeeded, ROWS } from '../game/constants';
+import { COLS, DINO_EMOJI, DINO_NAMES, DINO_UNLOCK_LV, groupsNeeded, ROWS, bombBoardMax } from '../game/constants';
 import { DINO_SOURCES } from '../game/images';
 import { GameBoard } from '../game/GameBoard';
 import {
@@ -39,7 +39,7 @@ import {
   shuffleGrid
 } from '../game/logic';
 import { BGM_NAMES, getCurrentBGMIndex, loadSoundEffects, onBgmChange, playBomb, playBonus, playBonusBig, playErase, playEraser, playGameOver, playHenkou, playShuffle, playTick, setSoundVolume, startBGM, stopBGM, switchBGM } from '../game/sound';
-import { clearGameState, loadGameState, loadRankings, loadSettings, saveGameState, saveSettings, saveToRanking, type Settings } from '../game/storage';
+import { clearGameState, getMaxReachedLevel, loadGameState, loadRankings, loadSettings, saveGameState, saveSettings, saveToRanking, setMaxReachedLevel, type Settings } from '../game/storage';
 import { preloadRewardedAd, isRewardedAdReady, showRewardedAd } from '../game/RewardedAdManager';
 import type { Cell, GameState } from '../game/types';
 
@@ -139,6 +139,8 @@ export default function GameScreen() {
   const prevEraserCountRef = React.useRef<number | null>(null);
   const [rankings, setRankings] = React.useState<{ score: number; level: number; date: string }[]>([]);
   const [globalRankings, setGlobalRankings] = React.useState<GlobalRankEntry[]>([]);
+  const [maxReachedLevel, setMaxReachedLevelState] = React.useState(1);
+  const [selectedStartLevel, setSelectedStartLevel] = React.useState(1);
   const [rankPeriod, setRankPeriod] = React.useState<RankPeriod>('daily');
   const [rankTab, setRankTab] = React.useState<'local' | 'global'>('local');
   const [loadingGlobal, setLoadingGlobal] = React.useState(false);
@@ -167,6 +169,8 @@ export default function GameScreen() {
       setNameInput(savedSettings.playerName);
       setSoundVolume(savedSettings.soundVolume);
       loadSoundEffects().then(() => setSoundVolume(savedSettings.soundVolume)); // re-apply volume after load
+      const storedMaxLevel = await getMaxReachedLevel();
+      setMaxReachedLevelState(storedMaxLevel);
 
       const saved = await loadGameState();
       if (saved && saved.running) {
@@ -237,6 +241,34 @@ export default function GameScreen() {
       saveSettings(next);
       return next;
     });
+  };
+
+  const selectableStartLevels = React.useMemo(() => {
+    const levels = [1];
+    if (maxReachedLevel >= 70) levels.push(50);
+    if (maxReachedLevel >= 90) levels.push(70);
+    if (maxReachedLevel >= 100) levels.push(90);
+    return levels;
+  }, [maxReachedLevel]);
+
+  React.useEffect(() => {
+    if (!selectableStartLevels.includes(selectedStartLevel)) {
+      setSelectedStartLevel(1);
+    }
+  }, [selectableStartLevels, selectedStartLevel]);
+
+  const resetForNewGame = (startLevel: number) => {
+    const initial = createInitialState(startLevel);
+    gsRef.current = initial;
+    setGameState(initial);
+    animatingRef.current = false;
+    return initial;
+  };
+
+  const bombMaxUnlockLabel = (oldLevel: number, newLevel: number) => {
+    const oldMax = bombBoardMax(oldLevel);
+    const newMax = bombBoardMax(newLevel);
+    return newMax > oldMax ? ` 火山上限+${newMax - oldMax}` : '';
   };
 
   // Deferred popup ref - used to avoid setState during render (inside setGameState callbacks)
@@ -389,7 +421,7 @@ export default function GameScreen() {
         ns = applyLevelUp(ns, false);
         let popMsg = `💥ALL +${totalPts}pts`;
         if (result.bonus === 'bonus') { popMsg += ' ✨'; }
-        if (leveled) popMsg += ` 🎉 LV${ns.level}!`;
+        if (leveled) popMsg += ` 🎉 LV${ns.level}!${bombMaxUnlockLabel(prev.level, ns.level)}`;
         deferPopup(popMsg, leveled ? 250 : 150);
         gsRef.current = ns;
         checkAfterErase(ns);
@@ -458,7 +490,7 @@ export default function GameScreen() {
         const leveled = ns.erasedGroups >= groupsNeeded(ns.level);
         ns = applyLevelUp(ns, false);
         let popMsg = `🌋 +${bombScore}pts`;
-        if (leveled) popMsg += ` 🎉 LV${ns.level}!`;
+        if (leveled) popMsg += ` 🎉 LV${ns.level}!${bombMaxUnlockLabel(prev.level, ns.level)}`;
         deferPopup(popMsg, leveled ? 250 : 150);
         gsRef.current = ns;
         checkAfterErase(ns);
@@ -508,7 +540,7 @@ export default function GameScreen() {
       let popMsg = `+${pts}pts`;
       if (bonus === 'bonus') { popMsg += ' ✨ ボーナス!'; }
       ns = applyLevelUp(ns, false); // don't show popup inside
-      if (leveled) popMsg += ` 🎉 LV${ns.level}!`;
+      if (leveled) popMsg += ` 🎉 LV${ns.level}!${bombMaxUnlockLabel(prev.level, ns.level)}`;
       deferPopup(popMsg, leveled ? 250 : 150);
       gsRef.current = ns;
       checkAfterErase(ns);
@@ -556,6 +588,9 @@ export default function GameScreen() {
       if (result.earnedShuffle) items.push('MIX×1');
       if (result.earnedHenkou) items.push('CHG×1');
       if (result.earnedAll) items.push('ALL×1');
+      const oldBombMax = bombBoardMax(state.level);
+      const newBombMax = bombBoardMax(result.newLevel);
+      if (newBombMax > oldBombMax) items.push(`火山上限+${newBombMax - oldBombMax}`);
       if (items.length > 0) msg += ` ${items.join(' ')}`;
       deferPopup(msg, 250);
     }
@@ -659,6 +694,9 @@ export default function GameScreen() {
   const finalizeGameOver = async (state: GameState) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     await clearGameState();
+    await setMaxReachedLevel(state.level);
+    const latestMaxLevel = Math.max(maxReachedLevel, state.level);
+    setMaxReachedLevelState(latestMaxLevel);
     await saveToRanking(state.score, state.level);
     if (settings.playerName) {
       await submitGlobalScore(settings.playerName, state.score, state.level);
@@ -746,10 +784,7 @@ export default function GameScreen() {
     setGameOverVisible(false);
     hasUsedReviveRef.current = false;
     preGameOverStateRef.current = null;
-    const initial = createInitialState();
-    gsRef.current = initial;
-    setGameState(initial);
-    animatingRef.current = false;
+    resetForNewGame(selectedStartLevel);
     showPopup('ゲームスタート！');
     preloadRewardedAd();
     if (settings.bgmOn) { try { await startBGM(); } catch {} }
@@ -874,6 +909,11 @@ export default function GameScreen() {
     <GestureHandlerRootView style={{ flex: 1 }}>
     <ImageBackground source={getBgByLevel(level)} style={styles.screen} contentFit="cover">
       <View style={{ paddingTop: STATUS_BAR_HEIGHT, flex: 1 }}>
+        {__DEV__ && (
+          <View style={styles.devReloadBadge}>
+            <Text style={styles.devReloadBadgeText}>DEV 18:45</Text>
+          </View>
+        )}
         {/* Header */}
         <View style={[styles.headerCard, { marginHorizontal: horizontalPadding }]}>
           {/* Row 1: Navigation */}
@@ -1207,6 +1247,27 @@ export default function GameScreen() {
             <Text style={styles.modalTitle}>GAME OVER</Text>
             <Text style={styles.modalScore}>スコア: {formatScore(score)}</Text>
             <Text style={styles.modalLevel}>レベル: {level}</Text>
+            {selectableStartLevels.length > 1 && (
+              <View style={styles.startLevelPanel}>
+                <Text style={styles.startLevelTitle}>次のゲームをどこから始めますか？</Text>
+                <View style={styles.startLevelRow}>
+                  {selectableStartLevels.map(startLv => {
+                    const selected = selectedStartLevel === startLv;
+                    return (
+                      <TouchableOpacity
+                        key={startLv}
+                        style={[styles.startLevelBtn, selected && styles.startLevelBtnSelected]}
+                        onPress={() => setSelectedStartLevel(startLv)}
+                      >
+                        <Text style={[styles.startLevelBtnLv, selected && styles.startLevelBtnTextSelected]}>LV{startLv}</Text>
+                        <Text style={[styles.startLevelBtnSub, selected && styles.startLevelBtnTextSelected]}>から</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={styles.startLevelNote}>LV1はスコア0 / アイテム0。LV50以上は初期アイテム付き。</Text>
+              </View>
+            )}
             <TouchableOpacity style={styles.modalBtn} onPress={handleRestart}>
               <Text style={styles.modalBtnText}>もう一度プレイ</Text>
             </TouchableOpacity>
@@ -1214,10 +1275,7 @@ export default function GameScreen() {
               setGameOverVisible(false);
               hasUsedReviveRef.current = false;
               preGameOverStateRef.current = null;
-              const initial = createInitialState();
-              gsRef.current = initial;
-              setGameState(initial);
-              animatingRef.current = false;
+              resetForNewGame(selectedStartLevel);
               preloadRewardedAd();
               const r = await loadRankings();
               setRankings(r);
@@ -1230,10 +1288,7 @@ export default function GameScreen() {
               setGameOverVisible(false);
               hasUsedReviveRef.current = false;
               preGameOverStateRef.current = null;
-              const initial = createInitialState();
-              gsRef.current = initial;
-              setGameState(initial);
-              animatingRef.current = false;
+              resetForNewGame(selectedStartLevel);
               await stopBGM();
               router.back();
             }}>
@@ -1431,6 +1486,12 @@ export default function GameScreen() {
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>📋 更新履歴</Text>
                 <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>v5.4.0</Text>（2026/05/06）{'\n'}
+                  ・ゲームオーバー時に開始LVを選択可能（LV1/50/70/90から再スタート）{'\n'}
+                  ・最高到達LVを設定画面で確認可能に{'\n'}
+                  ・高レベル時の火山(爆弾)上限アップ（LV100/150/200で段階拡張）{'\n'}
+                  ・LV50以上の出現バランス再調整{'\n'}
+                  {'\n'}
                   <Text style={styles.rulesBold}>v5.3.9</Text>（2026/05/01）{'\n'}
                   ・リワード広告の安定性向上・iOS 26（SDK 55）対応{'\n'}
                   {'\n'}
@@ -1697,7 +1758,7 @@ export default function GameScreen() {
                   </Text>
                 </TouchableOpacity>
 
-                {/* Debug toggle - dev only */}
+                {/* Debug toggle - dev only (Android Premium セクション内・Premium ON/OFF) */}
                 {__DEV__ && (
                 <View style={[styles.settingSubRow, { borderTopWidth: 1, borderTopColor: '#f3f4f6', marginTop: 6, paddingTop: 6 }]}>
                   <Text style={[styles.settingSubLabel, { color: '#d1d5db' }]}>🛠 デバッグ</Text>
@@ -1712,6 +1773,15 @@ export default function GameScreen() {
                 </View>
                 )}
               </View>}
+
+              {/* 最高到達LV（表示のみ・ユーザー向け） */}
+              <View style={styles.settingDivider} />
+              <View style={styles.settingSection}>
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>🏆 最高到達LV</Text>
+                  <Text style={[styles.settingLabel, { color: '#6b7280' }]}>{maxReachedLevel}</Text>
+                </View>
+              </View>
 
               <TouchableOpacity style={styles.settingsCloseBtn} onPress={() => setSettingsVisible(false)}>
                 <Text style={styles.settingsCloseBtnText}>閉じる</Text>
@@ -1934,6 +2004,11 @@ const styles = StyleSheet.create({
     flex: 1, textAlign: 'center', textAlignVertical: 'center',
     fontSize: 18, fontWeight: '800', color: '#fff',
   },
+  devReloadBadge: {
+    position: 'absolute', top: STATUS_BAR_HEIGHT + 2, right: 8, zIndex: 999,
+    backgroundColor: '#dc2626', borderRadius: 6, paddingVertical: 2, paddingHorizontal: 6,
+  },
+  devReloadBadgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
   centerArea: { alignItems: 'center', paddingTop: 1 },
 
   // Header
@@ -2085,6 +2160,18 @@ const styles = StyleSheet.create({
   modalBtnText: { color: '#fff', fontWeight: '900', fontSize: 16 },
   modalBtnSecondary: { backgroundColor: '#6b7280' },
   modalBtnTextSecondary: { color: '#fff', fontWeight: '900', fontSize: 14 },
+  startLevelPanel: { width: '100%', gap: 8, paddingVertical: 4 },
+  startLevelTitle: { fontSize: 14, fontWeight: '900', color: '#374151', textAlign: 'center' },
+  startLevelRow: { flexDirection: 'row', gap: 8, justifyContent: 'center', flexWrap: 'wrap' },
+  startLevelBtn: {
+    minWidth: 68, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10,
+    borderWidth: 2, borderColor: '#d1d5db', backgroundColor: '#fff', alignItems: 'center',
+  },
+  startLevelBtnSelected: { borderColor: '#f59e0b', backgroundColor: '#fef3c7' },
+  startLevelBtnLv: { fontSize: 15, fontWeight: '900', color: '#374151' },
+  startLevelBtnSub: { fontSize: 11, fontWeight: '800', color: '#6b7280' },
+  startLevelBtnTextSelected: { color: '#92400e' },
+  startLevelNote: { fontSize: 11, lineHeight: 16, fontWeight: '700', color: '#6b7280', textAlign: 'center' },
 
   charPopupTitle: { fontSize: 20, fontWeight: '900', color: '#d97706' },
   charPopupImage: { width: 140, height: 140 },
