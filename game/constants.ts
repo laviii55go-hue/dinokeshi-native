@@ -67,8 +67,6 @@ export const DINO_UNLOCK_LV = [
 export const BOMB_BOARD_MAX = 3;
 
 export function bombBoardMax(level: number): number {
-  if (level >= 200) return 6;
-  if (level >= 150) return 5;
   if (level >= 100) return 4;
   return BOMB_BOARD_MAX;
 }

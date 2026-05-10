@@ -1486,10 +1486,13 @@ export default function GameScreen() {
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>📋 更新履歴</Text>
                 <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>v5.4.1</Text>（2026/05/10）{'\n'}
+                  ・火山(爆弾)上限の調整：LV100以上で4個に統一{'\n'}
+                  {'\n'}
                   <Text style={styles.rulesBold}>v5.4.0</Text>（2026/05/06）{'\n'}
                   ・ゲームオーバー時に開始LVを選択可能（LV1/50/70/90から再スタート）{'\n'}
                   ・最高到達LVを設定画面で確認可能に{'\n'}
-                  ・高レベル時の火山(爆弾)上限アップ（LV100/150/200で段階拡張）{'\n'}
+                  ・高レベル時の火山(爆弾)上限アップ（LV100で+1個）{'\n'}
                   ・LV50以上の出現バランス再調整{'\n'}
                   {'\n'}
                   <Text style={styles.rulesBold}>v5.3.9</Text>（2026/05/01）{'\n'}
