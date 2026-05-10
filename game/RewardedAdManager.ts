@@ -145,24 +145,20 @@ export async function showRewardedAd(): Promise<boolean> {
     const settle = (result: boolean) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
       isAdLoaded = false;
-      // v1.5 修正：タイムアウト経路でもリスナーを必ず解除（残存で AdMob View 制御異常を防ぐ）
+      // リスナーを必ず解除（残存で AdMob View 制御異常を防ぐ）
       try { earnedSub && earnedSub(); } catch {}
       try { closedSub && closedSub(); } catch {}
       preloadRewardedAd();
       resolve(result);
     };
 
-    // 5分タイムアウト — SDKハング時の最終救済のみ（通常運用は CLOSED イベントで自然完了）
-    // v1.5の45秒は実広告(60〜90秒)より短く、settle先発火→handleRevive中にAdMob View残存→
-    // View dismissal後にタッチハンドラ破綻でアイテム消去ボタン無反応の症状(2026/05/01 v1.5実機verify)
-    // → 5分に延長してCLOSEDを正規完了シグナル化、タイムアウトはSDK応答停止時の救済に限定
-    // タイマーは settle() 内 clearTimeout(timer) で必ず破棄されるため通常終了で残留しない
-    const timer = setTimeout(() => {
-      console.warn('[RewardedAd] Timeout after 5min — SDK hang fallback, granting reward');
-      settle(true);
-    }, 300000);
+    // v5.4.1: タイムアウト処理削除（2026/05/10 テスターFB反映）
+    // 旧仕様（v1.5の45秒→v5.3.9の5分）はSDKハング救済目的だったが、
+    // ユーザー放置時に settle 先発火 → AdMob View 残存 →
+    // 「アイテム獲得済の状態でもう一度広告が表示される」症状を引き起こすため撤回
+    // CLOSED イベントは AdMob SDK 仕様で発火するため、通常運用は CLOSED 駆動で完結
+    // SDK 応答停止時はアプリ再起動で救済
 
     // リワード獲得 — RewardedAdEventType
     const earnedSub = rewardedAd.addAdEventListener(

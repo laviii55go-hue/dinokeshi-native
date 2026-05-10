@@ -1488,6 +1488,7 @@ export default function GameScreen() {
                 <Text style={styles.rulesText}>
                   <Text style={styles.rulesBold}>v5.4.1</Text>（2026/05/10）{'\n'}
                   ・火山(爆弾)上限の調整：LV100以上で4個に統一{'\n'}
+                  ・リワード広告の安定化（放置時の二重表示を解消）{'\n'}
                   {'\n'}
                   <Text style={styles.rulesBold}>v5.4.0</Text>（2026/05/06）{'\n'}
                   ・ゲームオーバー時に開始LVを選択可能（LV1/50/70/90から再スタート）{'\n'}
