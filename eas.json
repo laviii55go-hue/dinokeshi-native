@@ -28,6 +28,15 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "production"
+      }
+    },
+    "alpha": {
+      "android": {
+        "track": "alpha"
+      }
+    }
   }
 }
