@@ -29,6 +29,10 @@
   },
   "submit": {
     "production": {
+      "ios": {
+        "appleId": "laviii.55go@gmail.com",
+        "ascAppId": "6762076250"
+      },
       "android": {
         "track": "production"
       }
