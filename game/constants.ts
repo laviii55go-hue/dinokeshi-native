@@ -64,6 +64,28 @@ export const DINO_UNLOCK_LV = [
   500,
 ];
 
+// 次のキャラ解放情報を返す
+// 戻り値: { nextLevel, remaining, nextType } | null（最大解放済み）
+export interface NextUnlockInfo {
+  nextLevel: number;
+  remaining: number;
+  nextType: number;
+}
+
+export function getNextUnlockInfo(currentLevel: number): NextUnlockInfo | null {
+  for (let type = 0; type < DINO_UNLOCK_LV.length; type++) {
+    const unlockLv = DINO_UNLOCK_LV[type];
+    if (unlockLv > currentLevel) {
+      return {
+        nextLevel: unlockLv,
+        remaining: unlockLv - currentLevel,
+        nextType: type,
+      };
+    }
+  }
+  return null; // すべて解放済み
+}
+
 export const BOMB_BOARD_MAX = 3;
 
 export function bombBoardMax(level: number): number {
@@ -72,9 +94,12 @@ export function bombBoardMax(level: number): number {
 }
 
 export const START_LEVEL_PRESETS = {
-  50: { score: 6400, eraserCount: 24, shuffleCount: 12, henkouCount: 3, allCount: 1 },
-  70: { score: 8000, eraserCount: 34, shuffleCount: 16, henkouCount: 4, allCount: 2 },
-  90: { score: 12000, eraserCount: 44, shuffleCount: 22, henkouCount: 5, allCount: 2 },
+  10: { score: 800, eraserCount: 4, shuffleCount: 1, henkouCount: 0, allCount: 0 },
+  30: { score: 2500, eraserCount: 9, shuffleCount: 4, henkouCount: 1, allCount: 0 },
+  50: { score: 5000, eraserCount: 15, shuffleCount: 7, henkouCount: 1, allCount: 1 },
+  70: { score: 7500, eraserCount: 22, shuffleCount: 11, henkouCount: 2, allCount: 1 },
+  90: { score: 10500, eraserCount: 28, shuffleCount: 14, henkouCount: 2, allCount: 2 },
+  100: { score: 12500, eraserCount: 31, shuffleCount: 16, henkouCount: 3, allCount: 2 },
 } as const;
 
 export type StartLevelPreset = keyof typeof START_LEVEL_PRESETS;

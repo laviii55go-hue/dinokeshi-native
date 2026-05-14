@@ -109,6 +109,7 @@ export interface Settings {
   hapticsOn: boolean;
   dropAnimation: boolean;
   bombWaveEffect: boolean;
+  unlockAnimationOn: boolean;
   numberSize: 'sm' | 'md' | 'lg' | 'xl';
   playerName: string;
 }
@@ -119,6 +120,7 @@ const defaultSettings: Settings = {
   hapticsOn: true,
   dropAnimation: true,
   bombWaveEffect: true,
+  unlockAnimationOn: true,
   numberSize: 'md',
   playerName: '',
 };

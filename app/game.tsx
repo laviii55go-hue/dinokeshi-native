@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { COLS, DINO_EMOJI, DINO_NAMES, DINO_UNLOCK_LV, groupsNeeded, ROWS, bombBoardMax } from '../game/constants';
+import { COLS, DINO_EMOJI, DINO_NAMES, DINO_UNLOCK_LV, getNextUnlockInfo, groupsNeeded, ROWS, bombBoardMax } from '../game/constants';
 import { DINO_SOURCES } from '../game/images';
 import { GameBoard } from '../game/GameBoard';
 import {
@@ -137,6 +137,10 @@ export default function GameScreen() {
   const [flashButton, setFlashButton] = React.useState<string | null>(null);
   const exchangeAnim = React.useRef(new Animated.Value(1)).current;
   const prevEraserCountRef = React.useRef<number | null>(null);
+  // キャラ解放カットイン演出
+  const [unlockOverlay, setUnlockOverlay] = React.useState<{ type: number; name: string } | null>(null);
+  const unlockOverlayAnim = React.useRef(new Animated.Value(0)).current;
+  const unlockBoltAnim = React.useRef(new Animated.Value(0)).current;
   const [rankings, setRankings] = React.useState<{ score: number; level: number; date: string }[]>([]);
   const [globalRankings, setGlobalRankings] = React.useState<GlobalRankEntry[]>([]);
   const [maxReachedLevel, setMaxReachedLevelState] = React.useState(1);
@@ -149,7 +153,7 @@ export default function GameScreen() {
   // Settings state
   const [settings, setSettings] = React.useState<Settings>({
     soundVolume: 0.3, bgmOn: true, hapticsOn: true, dropAnimation: true,
-    bombWaveEffect: true, numberSize: 'lg', playerName: '',
+    bombWaveEffect: true, unlockAnimationOn: true, numberSize: 'lg', playerName: '',
   });
   const [nameInput, setNameInput] = React.useState('');
   const settingsRef = React.useRef(settings);
@@ -245,9 +249,12 @@ export default function GameScreen() {
 
   const selectableStartLevels = React.useMemo(() => {
     const levels = [1];
-    if (maxReachedLevel >= 70) levels.push(50);
-    if (maxReachedLevel >= 90) levels.push(70);
-    if (maxReachedLevel >= 100) levels.push(90);
+    if (maxReachedLevel >= 10) levels.push(10);
+    if (maxReachedLevel >= 30) levels.push(30);
+    if (maxReachedLevel >= 50) levels.push(50);
+    if (maxReachedLevel >= 70) levels.push(70);
+    if (maxReachedLevel >= 90) levels.push(90);
+    if (maxReachedLevel >= 100) levels.push(100);
     return levels;
   }, [maxReachedLevel]);
 
@@ -618,6 +625,24 @@ export default function GameScreen() {
       const newType = d.newDino;
       const pageIndex = d.pageIndex;
       d.newDino = null;
+      // カットイン演出（settings.unlockAnimationOn ON のとき）
+      if (settings.unlockAnimationOn) {
+        setUnlockOverlay({ type: newType, name: DINO_NAMES[newType] ?? '?' });
+        unlockOverlayAnim.setValue(0);
+        unlockBoltAnim.setValue(0);
+        if (settings.hapticsOn) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 150);
+        }
+        Animated.sequence([
+          Animated.timing(unlockOverlayAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+          Animated.timing(unlockBoltAnim, { toValue: 1, duration: 350, useNativeDriver: true }),
+          Animated.delay(900),
+          Animated.timing(unlockOverlayAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+        ]).start(() => {
+          setUnlockOverlay(null);
+        });
+      }
       if (levelUpTimer.current) clearTimeout(levelUpTimer.current);
       levelUpTimer.current = setTimeout(() => {
         // Scroll to the new dino in footer and pulse the icon
@@ -932,24 +957,43 @@ export default function GameScreen() {
             <View style={styles.navCenter}>
               <View style={styles.statusLv}>
                 <Text style={styles.statusLvLabel}>LV</Text>
-                <Text style={[styles.statusLvValue, level >= 1000 ? { fontSize: 11 } : level >= 100 ? { fontSize: 14 } : null]}>{level}</Text>
+                <Text style={[styles.statusLvValue, level >= 1000 ? { fontSize: 20 } : level >= 100 ? { fontSize: 24 } : null]}>{level}</Text>
               </View>
-              <View style={styles.dotsRow}>
-                {Array.from({ length: 10 }, (_, i) => {
-                  const filled = dotsFlash ? true : i < erasedGroups;
-                  const flash = dotsFlash;
-                  return (
-                    <View
-                      key={i}
-                      style={[
-                        styles.dot,
-                        filled
-                          ? (flash ? styles.dotFlash : styles.dotFilled)
-                          : styles.dotEmpty,
-                      ]}
-                    />
-                  );
-                })}
+              <View style={styles.navCenterMiddle}>
+                <View style={styles.navCenterTopRight}>
+                  {(() => {
+                    const nextUnlock = getNextUnlockInfo(level);
+                    return nextUnlock ? (
+                      <>
+                        <Text style={styles.nextUnlockHint}>
+                          次の出現まで あと {nextUnlock.remaining}Lv
+                        </Text>
+                        <Image source={DINO_SOURCES[nextUnlock.nextType]} style={styles.nextUnlockIcon} contentFit="contain" />
+                      </>
+                    ) : (
+                      <Text style={styles.nextUnlockHint}>🎉 全キャラ解放！</Text>
+                    );
+                  })()}
+                </View>
+                <View style={styles.navCenterBottomRight}>
+                  <View style={styles.dotsRow}>
+                    {Array.from({ length: 10 }, (_, i) => {
+                      const filled = dotsFlash ? true : i < erasedGroups;
+                      const flash = dotsFlash;
+                      return (
+                        <View
+                          key={i}
+                          style={[
+                            styles.dot,
+                            filled
+                              ? (flash ? styles.dotFlash : styles.dotFilled)
+                              : styles.dotEmpty,
+                          ]}
+                        />
+                      );
+                    })}
+                  </View>
+                </View>
               </View>
               <View style={styles.statusScore}>
                 <Text style={styles.scoreLabel}>SCORE</Text>
@@ -957,7 +1001,7 @@ export default function GameScreen() {
               </View>
             </View>
             <TouchableOpacity style={[styles.actionBtn, styles.hintBtn]} onPress={handleHint}>
-              <Text style={styles.actionBtnText}>ヒント</Text>
+              <Text style={styles.actionBtnText}>HINT</Text>
             </TouchableOpacity>
           </View>
 
@@ -1265,7 +1309,7 @@ export default function GameScreen() {
                     );
                   })}
                 </View>
-                <Text style={styles.startLevelNote}>LV1はスコア0 / アイテム0。LV50以上は初期アイテム付き。</Text>
+                <Text style={styles.startLevelNote}>LV1はスコア0 / アイテム0。LV10以上は初期アイテム付き。</Text>
               </View>
             )}
             <TouchableOpacity style={styles.modalBtn} onPress={handleRestart}>
@@ -1479,13 +1523,23 @@ export default function GameScreen() {
                 </View>
                 <Text style={styles.rulesTip}>
                   ⚠️ 新種は連結数が多くて消しにくい分、高得点チャンス！{'\n'}
-                  🎁 大グループで消すと固定ボーナス加算！
+                  🎁 大グループで消すと固定ボーナス加算！{'\n'}
+                  ✨ ヘッダーに「次の出現まで あと N Lv」を常時表示！{'\n'}
+                  ⚡ 新キャラ解放時はカットイン演出！（設定で ON/OFF 切替可）
                 </Text>
               </View>)}
 
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>📋 更新履歴</Text>
                 <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>v5.5.0</Text>（2026/05/14）{'\n'}
+                  ・「次の出現まで あと N Lv」ゲージをヘッダーに常時表示{'\n'}
+                  ・新キャラ解放時のカットイン演出を追加（設定で ON/OFF 切替可）{'\n'}
+                  ・開始LV選択を細分化：LV1/10/30/50/70/90/100 の7択に拡張{'\n'}
+                  ・開始LV別の初期アイテム数を再調整（過多解消）{'\n'}
+                  ・ヘッダーレイアウト2段化（LV/SCORE 大型化・ヒント→HINT）{'\n'}
+                  ・背景切替を序盤密集化（LV5/15/30/50/100/150/250/400）{'\n'}
+                  {'\n'}
                   <Text style={styles.rulesBold}>v5.4.1</Text>（2026/05/10）{'\n'}
                   ・火山(爆弾)上限の調整：LV100以上で4個に統一{'\n'}
                   ・リワード広告の安定化（放置時の二重表示を解消）{'\n'}
@@ -1698,6 +1752,22 @@ export default function GameScreen() {
                   >
                     <Text style={[styles.toggleText, settings.dropAnimation && styles.toggleTextOn]}>
                       {settings.dropAnimation ? 'ON' : 'OFF'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={styles.settingDivider} />
+
+              {/* Unlock Animation */}
+              <View style={styles.settingSection}>
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>⚡ キャラ解放演出</Text>
+                  <TouchableOpacity
+                    style={[styles.toggleBtn, settings.unlockAnimationOn ? styles.toggleOn : styles.toggleOff]}
+                    onPress={() => updateSettings({ unlockAnimationOn: !settings.unlockAnimationOn })}
+                  >
+                    <Text style={[styles.toggleText, settings.unlockAnimationOn && styles.toggleTextOn]}>
+                      {settings.unlockAnimationOn ? 'ON' : 'OFF'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1936,6 +2006,80 @@ export default function GameScreen() {
           </View>
         </View>
       </Modal>}
+      {/* キャラ解放カットイン演出 */}
+      {unlockOverlay && (
+        <Animated.View
+          style={[styles.unlockOverlay, { opacity: unlockOverlayAnim }]}
+          pointerEvents="none"
+        >
+          <Animated.View
+            style={[
+              styles.unlockFlashBg,
+              {
+                opacity: unlockBoltAnim.interpolate({
+                  inputRange: [0, 0.4, 1],
+                  outputRange: [0, 1, 0.55],
+                }),
+              },
+            ]}
+          />
+          <View style={styles.unlockCenter}>
+            <Animated.Text
+              style={[
+                styles.unlockBolt,
+                {
+                  transform: [
+                    {
+                      scale: unlockBoltAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.4, 1.2],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              ⚡
+            </Animated.Text>
+            <Animated.View
+              style={{
+                transform: [
+                  {
+                    scale: unlockOverlayAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.5, 1],
+                    }),
+                  },
+                ],
+              }}
+            >
+              <Image
+                source={DINO_SOURCES[unlockOverlay.type]}
+                style={styles.unlockDinoImage}
+                contentFit="contain"
+              />
+            </Animated.View>
+            <Animated.Text
+              style={[
+                styles.unlockBolt,
+                {
+                  transform: [
+                    {
+                      scale: unlockBoltAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.4, 1.2],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              ⚡
+            </Animated.Text>
+            <Text style={styles.unlockName}>{unlockOverlay.name} 解放！</Text>
+          </View>
+        </Animated.View>
+      )}
     </ImageBackground>
     </GestureHandlerRootView>
   );
@@ -2027,8 +2171,12 @@ const styles = StyleSheet.create({
   },
   navIconText: { fontSize: 18, fontWeight: '900' },
   navCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 1 },
-  dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
-  dot: { width: 10, height: 10, borderRadius: 2 },
+  navCenterMiddle: { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 },
+  navCenterTopRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  navCenterBottomRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  nextUnlockIcon: { width: 22, height: 22 },
+  dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
+  dot: { width: 13, height: 13, borderRadius: 3 },
   dotFilled: { backgroundColor: '#F97316' },
   dotEmpty: { backgroundColor: 'rgba(255,255,255,0.3)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.15)' },
   dotFlash: { backgroundColor: '#FBBF24' },
@@ -2084,12 +2232,46 @@ const styles = StyleSheet.create({
   menuDivider: { height: 1, backgroundColor: '#f0f0f0', marginHorizontal: 12 },
 
   // Status
-  statusLv: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
-  statusLvLabel: { color: 'rgba(0,0,0,0.65)', fontSize: 11, fontWeight: '900' },
-  statusLvValue: { color: '#111827', fontSize: 17, fontWeight: '900' },
-  statusScore: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
-  scoreLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1, color: 'rgba(0,0,0,0.55)' },
-  scoreValue: { fontSize: 20, fontWeight: '900', letterSpacing: 1.2, color: '#111827' },
+  statusLv: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  statusLvLabel: { color: 'rgba(0,0,0,0.65)', fontSize: 12, fontWeight: '900', lineHeight: 14 },
+  statusLvValue: { color: '#111827', fontSize: 30, fontWeight: '900', lineHeight: 32 },
+  statusScore: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  scoreLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1, color: 'rgba(0,0,0,0.55)', lineHeight: 12 },
+  scoreValue: { fontSize: 22, fontWeight: '900', letterSpacing: 1, color: '#111827', lineHeight: 26 },
+  nextUnlockHint: { fontSize: 13, fontWeight: '700', color: 'rgba(0,0,0,0.75)' },
+
+  // キャラ解放カットイン演出
+  unlockOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'center', alignItems: 'center',
+    zIndex: 9999,
+  },
+  unlockFlashBg: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(255,240,150,0.85)',
+  },
+  unlockCenter: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    alignItems: 'center', justifyContent: 'center', gap: 12,
+    paddingHorizontal: 24,
+  },
+  unlockBolt: {
+    fontSize: 64, color: '#fde047',
+    textShadowColor: '#facc15', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 18,
+  },
+  unlockEmoji: {
+    fontSize: 120,
+    textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 4 }, textShadowRadius: 10,
+  },
+  unlockDinoImage: {
+    width: 180, height: 180,
+  },
+  unlockName: {
+    width: '100%', textAlign: 'center', marginTop: 12,
+    fontSize: 28, fontWeight: '900', color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.7)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 6,
+    letterSpacing: 2,
+  },
 
   // Mode indicator
   modeIndicator: {
