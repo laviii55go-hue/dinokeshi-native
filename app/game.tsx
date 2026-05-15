@@ -77,7 +77,8 @@ export default function GameScreen() {
 
   // Layout calculations (responsive: use both width & height to fit tablets)
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const horizontalPadding = 4;
+  // 端末幅連動: 狭い端末（iPhone SE 等 375pt 以下）は最小 2pt、広い端末は最大 8pt
+  const horizontalPadding = Math.max(2, Math.min(8, Math.floor((screenWidth - 360) / 4)));
   const boardBorder = 1;
   const boardPadding = 0;
   const cellGap = 0;
@@ -976,22 +977,15 @@ export default function GameScreen() {
                   })()}
                 </View>
                 <View style={styles.navCenterBottomRight}>
-                  <View style={styles.dotsRow}>
-                    {Array.from({ length: 10 }, (_, i) => {
-                      const filled = dotsFlash ? true : i < erasedGroups;
-                      const flash = dotsFlash;
-                      return (
-                        <View
-                          key={i}
-                          style={[
-                            styles.dot,
-                            filled
-                              ? (flash ? styles.dotFlash : styles.dotFilled)
-                              : styles.dotEmpty,
-                          ]}
-                        />
-                      );
-                    })}
+                  <View style={styles.progressBarTrack}>
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        dotsFlash
+                          ? styles.progressBarFillFlash
+                          : { width: `${Math.min(erasedGroups, 10) * 10}%` },
+                      ]}
+                    />
                   </View>
                 </View>
               </View>
@@ -1029,14 +1023,14 @@ export default function GameScreen() {
                 {item.count > 0 && <Text style={styles.itemCount}>{item.count}</Text>}
               </TouchableOpacity>
             ))}
-            <Animated.View style={{ transform: [{ scale: exchangeAnim }] }}>
+            <Animated.View style={[styles.exchangeBtnWrap, { transform: [{ scale: exchangeAnim }] }]}>
               <TouchableOpacity
                 style={[styles.exchangeBtn, eraserCount >= 10 ? styles.exchangeBtnReady : styles.exchangeBtnLocked]}
                 onPress={handleExchange}
                 disabled={eraserCount < 10}
               >
                 <Text style={[styles.exchangeBtnText, eraserCount >= 10 ? styles.exchangeBtnTextReady : styles.exchangeBtnTextLocked]}>
-                  {eraserCount >= 10 ? '✨' : '🔒'} 交換 {Math.min(eraserCount, 10)}/10
+                  {eraserCount >= 10 ? '✨' : '🔒'} {Math.min(eraserCount, 10)}/10
                 </Text>
               </TouchableOpacity>
             </Animated.View>
@@ -1532,6 +1526,11 @@ export default function GameScreen() {
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>📋 更新履歴</Text>
                 <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>v5.5.1</Text>（2026/05/15）{'\n'}
+                  ・上部ヘッダーの画面崩れを修正（小型 iPhone 対応・端末幅連動マージン）{'\n'}
+                  ・進捗ドットを 1本の進捗バーに変更（コンパクト化）{'\n'}
+                  ・交換ボタンのテキストを短縮（「✨ 交換 N/10」→「✨ N/10」）{'\n'}
+                  {'\n'}
                   <Text style={styles.rulesBold}>v5.5.0</Text>（2026/05/14）{'\n'}
                   ・「次の出現まで あと N Lv」ゲージをヘッダーに常時表示{'\n'}
                   ・新キャラ解放時のカットイン演出を追加（設定で ON/OFF 切替可）{'\n'}
@@ -2175,11 +2174,14 @@ const styles = StyleSheet.create({
   navCenterTopRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   navCenterBottomRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   nextUnlockIcon: { width: 22, height: 22 },
-  dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
-  dot: { width: 13, height: 13, borderRadius: 3 },
-  dotFilled: { backgroundColor: '#F97316' },
-  dotEmpty: { backgroundColor: 'rgba(255,255,255,0.3)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.15)' },
-  dotFlash: { backgroundColor: '#FBBF24' },
+  progressBarTrack: {
+    width: 120, height: 12, borderRadius: 6, overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.15)',
+    flexShrink: 1,
+  },
+  progressBarFill: { height: '100%', borderRadius: 5, backgroundColor: '#F97316' },
+  progressBarFillFlash: { width: '100%', backgroundColor: '#FBBF24' },
 
   // Items row (row 2)
   itemsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -2205,9 +2207,10 @@ const styles = StyleSheet.create({
   itemBtnTextActive: { color: '#fff' },
 
   // Exchange button (new spec)
+  exchangeBtnWrap: { flex: 1 },
   exchangeBtn: {
-    height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 10,
+    flex: 1, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 6,
   },
   exchangeBtnReady: { backgroundColor: '#059669', borderWidth: 2, borderColor: '#047857' },
   exchangeBtnLocked: { backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 2, borderColor: 'rgba(0,0,0,0.15)' },
