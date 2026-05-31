@@ -179,6 +179,8 @@ export default function GameScreen() {
 
       const saved = await loadGameState();
       if (saved && saved.running) {
+        // 復活回数フラグを盤面から復元（再起動でリセットされ多重復活する不具合の修正・v5.5.2）
+        hasUsedReviveRef.current = saved.reviveUsed === true;
         setGameState(saved);
       } else {
         const initial = createInitialState();
@@ -744,6 +746,7 @@ export default function GameScreen() {
     setReviveModalVisible(false);
 
     // DEL×1, MIX×1, CHG×1, ALL×1 を付与
+    // reviveUsed:true を盤面にも載せて永続化（再起動でフラグが揮発し多重復活する不具合の修正・v5.5.2）
     const revived: GameState = {
       ...saved,
       eraserCount: saved.eraserCount + 1,
@@ -751,6 +754,7 @@ export default function GameScreen() {
       henkouCount: saved.henkouCount + 1,
       allCount: saved.allCount + 1,
       running: true,
+      reviveUsed: true,
     };
     gsRef.current = revived;
     setGameState(revived);

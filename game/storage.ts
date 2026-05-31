@@ -23,6 +23,8 @@ export async function loadGameState(): Promise<GameState | null> {
     const state = JSON.parse(raw) as GameState;
     // Backward compat: allCount added in v5.1
     if (state.allCount === undefined) state.allCount = 0;
+    // Backward compat: reviveUsed added in v5.5.2（古いセーブは未復活扱い）
+    if (state.reviveUsed === undefined) state.reviveUsed = false;
     // Assign gen to loaded cells so animation detection works
     let gen = 0;
     for (const row of state.grid) {

@@ -15,4 +15,5 @@ export interface GameState {
   allCount: number;         // ALL (erase all of one type) count
   running: boolean;
   announcedTypes: number[]; // character introductions shown
+  reviveUsed?: boolean;     // このゲームで復活を使ったか（v5.5.2: 再起動でリセットされないよう盤面と一緒に永続化）
 }

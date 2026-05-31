@@ -72,6 +72,7 @@ export function createInitialState(startLevel: number = 1): GameState {
     allCount,
     running: true,
     announcedTypes: types.map(t => t.type),
+    reviveUsed: false,
   };
 }
 
