@@ -55,6 +55,13 @@ const BG_IMAGE = require('../assets/images/bg.png');
 const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 36) : 44;
 const VERTICAL_OVERHEAD = STATUS_BAR_HEIGHT + 240;
 
+const VOLUME_OPTIONS = [
+  { label: '消', value: 0 },
+  { label: '小', value: 0.1 },
+  { label: '中', value: 0.3 },
+  { label: '大', value: 0.5 },
+];
+
 const NUM_SIZE_OPTIONS: { label: string; key: Settings['numberSize']; size: number }[] = [
   { label: '小', key: 'sm', size: 0.75 },
   { label: '中', key: 'md', size: 0.95 },
@@ -154,13 +161,24 @@ export default function TimeAttackScreen() {
   const timeRef = React.useRef(TA_DURATION);
   const timerIdRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Settings (read from shared storage, no UI to change here)
   const [settings, setSettings] = React.useState<Settings>({
     soundVolume: 0.3, bgmOn: true, hapticsOn: true, dropAnimation: true,
     bombWaveEffect: true, unlockAnimationOn: true, numberSize: 'lg', playerName: '',
   });
   const settingsRef = React.useRef(settings);
   const [bgmIndex, setBgmIndex] = React.useState(0);
+  const [settingsVisible, setSettingsVisible] = React.useState(false);
+  const [nameInput, setNameInput] = React.useState('');
+
+  const updateSettings = (patch: Partial<Settings>) => {
+    setSettings(prev => {
+      const next = { ...prev, ...patch };
+      settingsRef.current = next;
+      saveSettings(next);
+      if (patch.soundVolume !== undefined) setSoundVolume(patch.soundVolume);
+      return next;
+    });
+  };
 
   const popupTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -173,6 +191,7 @@ export default function TimeAttackScreen() {
     (async () => {
       const savedSettings = await loadSettings();
       setSettings(savedSettings);
+      setNameInput(savedSettings.playerName);
       setSoundVolume(savedSettings.soundVolume);
       loadSoundEffects().then(() => setSoundVolume(savedSettings.soundVolume));
 
@@ -1003,6 +1022,10 @@ export default function TimeAttackScreen() {
       {menuVisible && <Modal visible={menuVisible} transparent animationType="fade">
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
           <View style={styles.menuPanel}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setSettingsVisible(true); }}>
+              <Text style={styles.menuItemText}>⚙ 設定</Text>
+            </TouchableOpacity>
+            <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuItem} onPress={handleRetire}>
               <Text style={[styles.menuItemText, styles.menuItemDanger]}>🚪 リタイア</Text>
             </TouchableOpacity>
@@ -1248,6 +1271,130 @@ export default function TimeAttackScreen() {
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+      </Modal>}
+
+      {/* Settings */}
+      {settingsVisible && <Modal visible={settingsVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20 }}>
+            <View style={styles.stCard}>
+              <View style={styles.stHeader}>
+                <Text style={styles.stHeaderText}>⚙ 設定</Text>
+              </View>
+
+              <View style={styles.stSection}>
+                <Text style={styles.stLabel}>🏷 プレイヤー名</Text>
+                <View style={styles.stNameRow}>
+                  <TextInput
+                    style={styles.stNameInput}
+                    value={nameInput}
+                    onChangeText={setNameInput}
+                    placeholder="名前を入力"
+                    maxLength={12}
+                  />
+                  <TouchableOpacity
+                    style={styles.stSaveBtn}
+                    onPress={() => {
+                      updateSettings({ playerName: nameInput });
+                      settings.hapticsOn && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    }}
+                  >
+                    <Text style={styles.stSaveBtnText}>保存</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.stHint}>現在: {settings.playerName || '未設定'}</Text>
+              </View>
+              <View style={styles.stDivider} />
+
+              <View style={styles.stSection}>
+                <Text style={styles.stLabel}>🔊 効果音</Text>
+                <View style={styles.stBtnRow}>
+                  {VOLUME_OPTIONS.map(opt => (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[styles.stBtn, settings.soundVolume === opt.value && styles.stBtnActive]}
+                      onPress={() => updateSettings({ soundVolume: opt.value })}
+                    >
+                      <Text style={[styles.stBtnText, settings.soundVolume === opt.value && styles.stBtnTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.stDivider} />
+
+              <View style={styles.stSection}>
+                <Text style={styles.stLabel}>🔢 数値サイズ</Text>
+                <View style={styles.stBtnRow}>
+                  {NUM_SIZE_OPTIONS.map(opt => (
+                    <TouchableOpacity
+                      key={opt.key}
+                      style={[styles.stBtn, settings.numberSize === opt.key && styles.stBtnActive]}
+                      onPress={() => updateSettings({ numberSize: opt.key })}
+                    >
+                      <Text style={[styles.stBtnText, settings.numberSize === opt.key && styles.stBtnTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.stDivider} />
+
+              <View style={styles.stSection}>
+                <View style={styles.stRow}>
+                  <Text style={styles.stLabel}>🎵 BGM</Text>
+                  <TouchableOpacity
+                    style={[styles.stToggle, settings.bgmOn ? styles.stToggleOn : styles.stToggleOff]}
+                    onPress={async () => {
+                      const next = !settings.bgmOn;
+                      updateSettings({ bgmOn: next });
+                      if (next) { try { await startBGM(); } catch {} }
+                      else { await stopBGM(); }
+                    }}
+                  >
+                    <Text style={[styles.stToggleText, settings.bgmOn && styles.stToggleTextOn]}>
+                      {settings.bgmOn ? 'ON' : 'OFF'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {settings.bgmOn && (
+                  <View style={styles.stBgmList}>
+                    {BGM_NAMES.map((name, i) => (
+                      <TouchableOpacity
+                        key={i}
+                        style={[styles.stBgmItem, bgmIndex === i && styles.stBgmItemActive]}
+                        onPress={() => switchBGM(i)}
+                      >
+                        <Text style={styles.stBgmItemText}>{name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+              <View style={styles.stDivider} />
+
+              <View style={styles.stSection}>
+                <View style={styles.stRow}>
+                  <Text style={styles.stLabel}>📳 振動</Text>
+                  <TouchableOpacity
+                    style={[styles.stToggle, settings.hapticsOn ? styles.stToggleOn : styles.stToggleOff]}
+                    onPress={() => updateSettings({ hapticsOn: !settings.hapticsOn })}
+                  >
+                    <Text style={[styles.stToggleText, settings.hapticsOn && styles.stToggleTextOn]}>
+                      {settings.hapticsOn ? 'ON' : 'OFF'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <TouchableOpacity style={styles.stCloseBtn} onPress={() => setSettingsVisible(false)}>
+                <Text style={styles.stCloseBtnText}>閉じる</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </View>
       </Modal>}
 
@@ -1571,6 +1718,47 @@ const styles = StyleSheet.create({
   },
   rkCloseBtn: { backgroundColor: '#dc2626', paddingVertical: 8, paddingHorizontal: 24, borderRadius: 8 },
   rkCloseBtnText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+
+  // Settings
+  stCard: {
+    backgroundColor: '#fff', borderRadius: 16, padding: 20, maxWidth: 440, width: '100%', alignSelf: 'center',
+  },
+  stHeader: { alignItems: 'center', marginBottom: 12 },
+  stHeaderText: { fontSize: 20, fontWeight: '900', color: '#374151' },
+  stSection: { paddingVertical: 8 },
+  stLabel: { fontSize: 15, fontWeight: '800', color: '#374151', marginBottom: 6 },
+  stDivider: { height: 1, backgroundColor: '#e5e7eb', marginVertical: 4 },
+  stRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  stBtnRow: { flexDirection: 'row', gap: 8 },
+  stBtn: {
+    paddingVertical: 6, paddingHorizontal: 14, borderRadius: 8,
+    backgroundColor: '#f3f4f6', borderWidth: 1, borderColor: '#e5e7eb',
+  },
+  stBtnActive: { backgroundColor: '#dc2626', borderColor: '#dc2626' },
+  stBtnText: { fontSize: 13, fontWeight: '700', color: '#6b7280' },
+  stBtnTextActive: { color: '#fff' },
+  stToggle: { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 8 },
+  stToggleOn: { backgroundColor: '#dc2626' },
+  stToggleOff: { backgroundColor: '#e5e7eb' },
+  stToggleText: { fontSize: 13, fontWeight: '800', color: '#6b7280' },
+  stToggleTextOn: { color: '#fff' },
+  stBgmList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  stBgmItem: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 6, backgroundColor: '#f3f4f6' },
+  stBgmItemActive: { backgroundColor: '#fecaca' },
+  stBgmItemText: { fontSize: 12, fontWeight: '700', color: '#374151' },
+  stNameRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  stNameInput: {
+    flex: 1, borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 6, fontSize: 14,
+  },
+  stSaveBtn: { backgroundColor: '#dc2626', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8 },
+  stSaveBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  stHint: { fontSize: 11, color: '#9ca3af', marginTop: 4 },
+  stCloseBtn: {
+    marginTop: 16, backgroundColor: '#374151', paddingVertical: 10,
+    borderRadius: 10, alignItems: 'center',
+  },
+  stCloseBtnText: { color: '#fff', fontWeight: '900', fontSize: 15 },
 
   // Unlock overlay
   unlockOverlay: {

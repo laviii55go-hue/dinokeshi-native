@@ -56,6 +56,12 @@ export default function HomeScreen() {
           <Text style={styles.taButtonSub}>90秒スピード勝負！ スコア5倍＋コンボ</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.helpButton}
+          onPress={() => router.push('/tutorial' as Href)}>
+          <Text style={styles.helpButtonText}>❓ 遊び方</Text>
+        </TouchableOpacity>
+
         <Text style={styles.version}>v5.6.0</Text>
       </View>
     </View>
@@ -161,9 +167,22 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
+  helpButton: {
+    alignSelf: 'center',
+    marginTop: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+  },
+  helpButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6b7280',
+  },
   version: {
     textAlign: 'center',
-    marginTop: 16,
+    marginTop: 12,
     fontSize: 12,
     color: 'rgba(0,0,0,0.35)',
     fontWeight: '600',
