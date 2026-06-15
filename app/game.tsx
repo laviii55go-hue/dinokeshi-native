@@ -1955,8 +1955,8 @@ export default function GameScreen() {
                 <Text style={[styles.rkThCell, { width: 36 }]}>順位</Text>
                 <Text style={[styles.rkThCell, { width: 80 }]}>スコア</Text>
                 {rankTab === 'global' && <Text style={[styles.rkThCell, { flex: 1, paddingLeft: 8 }]} numberOfLines={1}>プレイヤー</Text>}
-                <Text style={[styles.rkThCell, { width: 50 }]}>LV</Text>
-                <Text style={[styles.rkThCell, { width: 72 }]}>日時</Text>
+                <Text style={[styles.rkThCell, { width: 58 }]}>LV</Text>
+                <Text style={[styles.rkThCell, { width: 52, textAlign: 'center' }]}>日付</Text>
               </View>
 
               {rankTab === 'local' ? (
@@ -1970,8 +1970,8 @@ export default function GameScreen() {
                         entry.score >= 15000 && { fontSize: 15, fontWeight: '900', color: '#dc2626' },
                         entry.score >= 10000 && entry.score < 15000 && { fontSize: 13, fontWeight: '900', color: '#d97706' },
                       ]}>{formatScore(entry.score)}</Text>
-                      <Text style={[styles.rkTdCell, { width: 50 }]}>LV{entry.level}</Text>
-                      <Text style={[styles.rkTdCell, { flex: 1, textAlign: 'left', paddingLeft: 8, fontSize: 12 }]}>{entry.date}</Text>
+                      <Text style={[styles.rkTdCell, { width: 58 }]}>LV{entry.level}</Text>
+                      <Text style={[styles.rkTdCell, { width: 52, textAlign: 'center', fontSize: 12 }]}>{entry.date?.split(' ')[0] ?? entry.date}</Text>
                     </View>
                   ))
                 )
@@ -1990,8 +1990,8 @@ export default function GameScreen() {
                     <Text style={[styles.rkTdCell, { flex: 1, textAlign: 'left', paddingLeft: 8 }]} numberOfLines={1}>
                       {entry.name || '???'}
                     </Text>
-                    <Text style={[styles.rkTdCell, { width: 50 }]}>LV{entry.level}</Text>
-                    <Text style={[styles.rkTdCell, { width: 72, textAlign: 'right', fontSize: 12 }]}>{entry.date}</Text>
+                    <Text style={[styles.rkTdCell, { width: 58 }]}>LV{entry.level}</Text>
+                    <Text style={[styles.rkTdCell, { width: 52, textAlign: 'center', fontSize: 12 }]}>{entry.date?.split(' ')[0] ?? entry.date}</Text>
                   </View>
                 ))
               )}
@@ -2340,7 +2340,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', padding: 20,
   },
   modalCard: {
-    width: '100%', maxWidth: 380, backgroundColor: '#fff',
+    width: '100%', maxWidth: 440, backgroundColor: '#fff',
     borderRadius: 20, padding: 24, alignItems: 'center', gap: 12,
   },
   modalTitle: { fontSize: 24, fontWeight: '900', color: '#111827' },
@@ -2424,7 +2424,7 @@ const styles = StyleSheet.create({
   // Settings
   settingsCard: {
     backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden',
-    width: '100%', maxWidth: 380, alignSelf: 'center',
+    width: '100%', maxWidth: 440, alignSelf: 'center',
   },
   settingsHeader: { backgroundColor: '#f59e0b', paddingVertical: 14, alignItems: 'center' },
   settingsHeaderText: { color: '#fff', fontSize: 20, fontWeight: '900' },

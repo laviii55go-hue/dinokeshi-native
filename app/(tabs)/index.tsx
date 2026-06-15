@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { type Href, useRouter } from 'expo-router';
 import * as React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 
 const DINO_SOURCES = [
   require('../../assets/images/dino-0.png'),
@@ -15,10 +15,12 @@ const DINO_SOURCES = [
 export default function HomeScreen() {
   const router = useRouter();
   const [dinoIdx] = React.useState(() => Math.floor(Math.random() * DINO_SOURCES.length));
+  const { width } = useWindowDimensions();
+  const cardMaxWidth = Math.min(500, width - 32);
 
   return (
     <View style={styles.screen}>
-      <View style={styles.card}>
+      <View style={[styles.card, { maxWidth: cardMaxWidth }]}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>🦕 恐竜けし</Text>
         </View>
@@ -55,7 +57,6 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 420,
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 20,
     padding: 24,

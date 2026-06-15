@@ -92,7 +92,7 @@ export async function saveToRanking(score: number, level: number): Promise<numbe
   const entry: RankEntry = {
     score,
     level,
-    date: (() => { const n = new Date(); const p = (v: number) => String(v).padStart(2, '0'); return `${p(n.getMonth()+1)}/${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}`; })(),
+    date: (() => { const n = new Date(); const p = (v: number) => String(v).padStart(2, '0'); return `${p(n.getMonth()+1)}/${p(n.getDate())}`; })(),
   };
   rankings.push(entry);
   rankings.sort((a, b) => b.score - a.score);

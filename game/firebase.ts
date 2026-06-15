@@ -93,7 +93,7 @@ export async function submitGlobalScore(name: string, score: number, level: numb
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-    const dateStr = `${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const dateStr = `${pad(now.getMonth() + 1)}/${pad(now.getDate())}`;
 
     // Consecutive days tracking
     const lastLogin = await AsyncStorage.getItem(FB_LAST_LOGIN_KEY) || '';
