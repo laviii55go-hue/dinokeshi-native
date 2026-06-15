@@ -183,6 +183,74 @@ const ja: Record<string, string> = {
   tut_start_body: '通常モードでじっくり遊ぶもよし、\nタイムアタックで熱くなるもよし。\n\nきみだけの恐竜パズルを楽しもう！',
   tut_next: 'つぎへ',
   tut_begin: 'はじめる！',
+
+  // Bonus popup
+  bonus_popup: '✨ ボーナス!',
+
+  // Rules
+  rules_header: '📖 遊び方',
+  rules_nav_prev: '◀ 前へ',
+  rules_nav_next: '次へ ▶',
+  rules_s1_title: '① 基本ルール',
+  rules_s1_body: '同じ種類の恐竜が「表示の数」と同じ数だけつながっているときにタップで消せます。',
+  rules_th_dino: '恐竜',
+  rules_th_display: '表示',
+  rules_th_required: '必要な連結数',
+  rules_single_ok: '{0}個（単体でOK）',
+  rules_n_or_more: '{0}個以上',
+  rules_s1_tip: '💡 タップすると消えるグループが黄色でハイライトされます！',
+  rules_s2_title: '② スコアのしくみ',
+  rules_s2_body1: 'スコアは **消えた枚数 × 表示の数値** で加算されます。',
+  rules_s2_body2: 'グループが大きいほど、また表示数値が大きい恐竜ほど**高得点**！',
+  rules_s2_rare: '✨ **レアボーナス**\nスピノサウルス以上の恐竜を消すとレアボーナス加算！\n難しい恐竜ほど高ボーナス\n\n📈 **レベル係数**：LV3からスコアUP\nLV3:1.1倍 → LV10:1.35倍 → LV30:1.7倍 → LV50+:2.0倍〜',
+  rules_s2_tip: '💡 ティラノサウルス（表示1）は1個から消せるので詰まったときの救済にも！',
+  rules_s3_title: '③ 噴火 🌋',
+  rules_s3_body1: '🌋をタップすると、その噴火がある**縦一列＋横一列**を一気に消します。',
+  rules_s3_body2: '🌋 隣の噴火に連鎖して一気に爆発することも！',
+  rules_s3_tip: '噴火はLV1〜3で多め。盤上に最大3個。',
+  rules_s4_title: '④ レベルアップ＆特別ボタン',
+  rules_s4_body: '**10グループ**消すごとにレベルアップ！新キャラクターが出現します。',
+  rules_th_unlock_lv: '解放LV',
+  rules_th_button: 'ボタン',
+  rules_th_effect: '効果',
+  rules_item_del: '好きな1マスを消去。LVアップごとに+1',
+  rules_item_mix: 'グリッド全体をシャッフル',
+  rules_item_chg: '1種類を基本6種のどれかに全変換',
+  rules_item_all: '1種類の恐竜を盤面から全消去',
+  rules_s4_tip: '💡 DEL・MIX・CHG・ALLが残っているとゲームオーバーを回避！\nボタンが光ったら使いどき！\n🔁 DEL×10 → CHG×1、DEL×15 → ALL×1 に交換可能！',
+  rules_s5_title: '⑤ 新キャラクターの出現',
+  rules_s5_body: 'レベルが上がると、より強力な新キャラクターが出現します。',
+  rules_th_needed: '必要数',
+  rules_n_pcs: '{0}個',
+  rules_mystery: '??? 何が出るかはお楽しみ！',
+  rules_s5_tip: '⚠️ 新種は連結数が多くて消しにくい分、高得点チャンス！\n🎁 大グループで消すと固定ボーナス加算！\n✨ ヘッダーに「次の出現まで あと N Lv」を常時表示！\n⚡ 新キャラ解放時はカットイン演出！（設定で ON/OFF 切替可）',
+  rules_changelog_title: '📋 更新履歴',
+  changelog_v560: '・タイムアタックモード追加（6×8盤面・90秒・スコア5倍＋コンボ）\n・インタースティシャル広告追加\n・チュートリアル画面追加\n・多言語（英語）対応',
+  changelog_v551: '・上部ヘッダーの画面崩れを修正（小型 iPhone 対応・端末幅連動マージン）\n・進捗ドットを 1本の進捗バーに変更（コンパクト化）\n・交換ボタンのテキストを短縮',
+  changelog_v550: '・「次の出現まで」ゲージをヘッダーに常時表示\n・新キャラ解放時のカットイン演出を追加\n・開始LV選択を7択に拡張\n・ヘッダーレイアウト2段化\n・背景切替を序盤密集化',
+  changelog_v541: '・火山上限の調整：LV100以上で4個に統一\n・リワード広告の安定化',
+  changelog_v540: '・ゲームオーバー時に開始LV選択可能\n・最高到達LVを設定画面で確認可能に\n・高レベル時の火山上限アップ\n・LV50以上の出現バランス再調整',
+  changelog_v539: '・リワード広告の安定性向上・iOS 26対応',
+  changelog_v533: '・App Store言語設定を日本語に修正',
+  changelog_v531: '・Lv70以降の出現バランス調整\n・広告読み込み失敗時のフリーズ改善\n・iOS版リワード広告の設定修正',
+  changelog_v530: '・新キャラ7体追加（世界樹・海・大地・空・星・虚無・∞）\n・LV500まで解放キャラ拡張',
+  changelog_v522: '・ゲームオーバー時の復活機能追加\n・Premium（広告OFF＋復活特典）追加\n・リタイア時は復活モーダル非表示に改善',
+  changelog_v520: '・スコアポップアップ改善\n・序盤スコア倍率強化\n・火山爆発後の空白待機追加\n・新恐竜カード回転演出\n・未解放キャラにLV表示\n・MIX・ゲームオーバー音改善',
+  changelog_v510: '・一括消去ボタン（ALL）追加\n・新恐竜アンロック演出変更\n・報酬バランス見直し\n・落下アニメーション追加\n・タッチ判定改善',
+  changelog_v501: '・新キャラ追加（全19種）\n・ランキング3タブ化\n・ランキング不具合修正\n・高レベル時UI改善\n・パフォーマンス改善',
+  changelog_v500: '・広告非表示パック（アプリ内購入）\n・アイテム交換機能\n・月間ランキング追加\n・振動ON/OFF設定\n・名前登録機能\n・スコアバランス調整\n・パフォーマンス大幅改善',
+
+  // Score popup with score label
+  score_display: 'スコア: {0}',
+  level_display: 'レベル: {0}',
+  level_display_ta: 'レベル: {0}（開始 LV30）',
+
+  // Shuffle with penalty
+  shuffle_penalty: 'シャッフル！ -{0}pts',
+
+  // Language names
+  lang_ja: '日本語',
+  lang_en: 'English',
 };
 
 const en: Record<string, string> = {
@@ -363,6 +431,74 @@ const en: Record<string, string> = {
   tut_start_body: 'Take it slow in Normal Mode,\nor go full speed in Time Attack.\n\nEnjoy your own dino puzzle adventure!',
   tut_next: 'Next',
   tut_begin: 'Start!',
+
+  // Bonus popup
+  bonus_popup: '✨ Bonus!',
+
+  // Rules
+  rules_header: '📖 How to Play',
+  rules_nav_prev: '◀ Prev',
+  rules_nav_next: 'Next ▶',
+  rules_s1_title: '① Basic Rules',
+  rules_s1_body: 'Tap to erase when the same type of dinosaur is connected by the number shown.',
+  rules_th_dino: 'Dinosaur',
+  rules_th_display: 'Number',
+  rules_th_required: 'Required Connections',
+  rules_single_ok: '{0} (single OK)',
+  rules_n_or_more: '{0} or more',
+  rules_s1_tip: '💡 Tap to highlight groups that can be erased!',
+  rules_s2_title: '② Scoring',
+  rules_s2_body1: 'Score is calculated by **tiles erased × display number**.',
+  rules_s2_body2: 'Bigger groups and higher-number dinos mean **more points**!',
+  rules_s2_rare: '✨ **Rare Bonus**\nErase Spinosaurus or higher for a rare bonus!\nHarder dinos give bigger bonuses\n\n📈 **Level Multiplier**: Score UP from LV3\nLV3: ×1.1 → LV10: ×1.35 → LV30: ×1.7 → LV50+: ×2.0+',
+  rules_s2_tip: '💡 Tyrannosaurus (number 1) can be erased alone — great for getting unstuck!',
+  rules_s3_title: '③ Volcano 🌋',
+  rules_s3_body1: 'Tap 🌋 to erase the entire **row + column** at once.',
+  rules_s3_body2: '🌋 Nearby volcanoes can chain-explode!',
+  rules_s3_tip: 'Volcanoes appear more at LV1–3. Max 3 on the board.',
+  rules_s4_title: '④ Level Up & Items',
+  rules_s4_body: 'Level up every **10 groups** erased! New characters appear.',
+  rules_th_unlock_lv: 'Unlock LV',
+  rules_th_button: 'Button',
+  rules_th_effect: 'Effect',
+  rules_item_del: 'Erase any 1 cell. +1 per level up',
+  rules_item_mix: 'Shuffle the entire grid',
+  rules_item_chg: 'Convert one type to a random basic type',
+  rules_item_all: 'Erase all of one dino type from the board',
+  rules_s4_tip: '💡 Having DEL/MIX/CHG/ALL prevents Game Over!\nUse them when buttons flash!\n🔁 Exchange: DEL×10 → CHG×1, DEL×15 → ALL×1',
+  rules_s5_title: '⑤ New Characters',
+  rules_s5_body: 'As you level up, more powerful new characters appear.',
+  rules_th_needed: 'Required',
+  rules_n_pcs: '{0}',
+  rules_mystery: '??? Find out for yourself!',
+  rules_s5_tip: '⚠️ New species are harder to erase but worth more points!\n🎁 Big groups give fixed bonus scores!\n✨ Header shows "Next unlock in N Lv"!\n⚡ Cut-in animation on new character unlock! (toggle in Settings)',
+  rules_changelog_title: '📋 Update History',
+  changelog_v560: '・Added Time Attack mode (6×8 board, 90s, Score ×5 + Combo)\n・Added interstitial ads\n・Added tutorial screen\n・Added English language support',
+  changelog_v551: '・Fixed header layout for small iPhones\n・Changed progress dots to progress bar\n・Shortened exchange button text',
+  changelog_v550: '・Added "Next unlock" gauge to header\n・Added character unlock cut-in animation\n・Expanded start LV to 7 choices\n・Redesigned header layout\n・Adjusted background transitions',
+  changelog_v541: '・Adjusted volcano cap: max 4 at LV100+\n・Stabilized reward ads',
+  changelog_v540: '・Added start LV selection on Game Over\n・Added highest LV display in Settings\n・Increased volcano cap at high levels\n・Rebalanced spawns at LV50+',
+  changelog_v539: '・Improved reward ad stability for iOS 26',
+  changelog_v533: '・Fixed App Store language setting',
+  changelog_v531: '・Adjusted spawn balance at LV70+\n・Fixed ad loading freeze\n・Fixed iOS reward ad settings',
+  changelog_v530: '・Added 7 new characters (World Tree, Ocean, Earth, Sky, Star, Void, ∞)\n・Extended character unlocks to LV500',
+  changelog_v522: '・Added Game Over revival (watch ad for items)\n・Added Premium (ad-free + revival)\n・Hid revival modal on retire',
+  changelog_v520: '・Improved score popup timing\n・Boosted early score multiplier\n・Added post-explosion pause\n・Added new dino card flip animation\n・Show unlock LV on locked characters\n・Improved MIX/Game Over sounds',
+  changelog_v510: '・Added ALL (erase all of one type) button\n・Changed unlock animation to footer style\n・Rebalanced high-level rewards\n・Added drop animation\n・Improved touch detection',
+  changelog_v501: '・Added new characters (19 total)\n・3-tab ranking (Daily/Weekly/Monthly)\n・Fixed ranking display bugs\n・Improved high-level UI\n・Performance improvements',
+  changelog_v500: '・Ad removal pack (in-app purchase)\n・Item exchange feature\n・Monthly ranking\n・Haptics ON/OFF setting\n・Name registration on Game Over\n・Score balance adjustments\n・Major performance improvements',
+
+  // Score popup with score label
+  score_display: 'Score: {0}',
+  level_display: 'Level: {0}',
+  level_display_ta: 'Level: {0} (Start LV30)',
+
+  // Shuffle with penalty
+  shuffle_penalty: 'Shuffle! -{0}pts',
+
+  // Language names
+  lang_ja: '日本語',
+  lang_en: 'English',
 };
 
 const DINO_NAMES_JA = [
@@ -387,6 +523,28 @@ const DINO_NAMES_EN = [
   'Ocean', 'Earth', 'Sky', 'Star', 'Void', '∞',
 ];
 
+const DINO_NAMES_SHORT_JA = [
+  'ティラノ', 'ブラキオ', 'プテラ',
+  'トリケラ', 'ステゴ', 'スピノ',
+  'アロ', 'パキケファロ', 'モサ',
+  'アンキロ', 'マイアサウラ', 'ケツァル',
+  'マンモス', 'ヒト', 'ロボット', 'AI', 'エイリアン',
+  'ドラゴン', 'オロチ', 'ユニコーン',
+  'フェニックス', '麒麟', '神', '世界樹',
+  '海', '大地', '空', '星', '虚無', '∞',
+];
+
+const DINO_NAMES_SHORT_EN = [
+  'T-Rex', 'Brachio', 'Ptera',
+  'Tricera', 'Stego', 'Spino',
+  'Allo', 'Pachy', 'Mosa',
+  'Ankylo', 'Maiasaura', 'Quetzal',
+  'Mammoth', 'Human', 'Robot', 'AI', 'Alien',
+  'Dragon', 'Orochi', 'Unicorn',
+  'Phoenix', 'Qilin', 'God', 'World Tree',
+  'Ocean', 'Earth', 'Sky', 'Star', 'Void', '∞',
+];
+
 const translations: Record<Language, Record<string, string>> = { ja, en };
 
 export function t(key: string): string {
@@ -402,4 +560,30 @@ export function tf(key: string, ...args: (string | number)[]): string {
 export function dinoName(index: number): string {
   const names = currentLang === 'en' ? DINO_NAMES_EN : DINO_NAMES_JA;
   return names[index] ?? `Dino ${index}`;
+}
+
+export function dinoNameShort(index: number): string {
+  const names = currentLang === 'en' ? DINO_NAMES_SHORT_EN : DINO_NAMES_SHORT_JA;
+  return names[index] ?? `Dino ${index}`;
+}
+
+export type BoldSegment = { text: string; bold: boolean };
+
+export function parseBold(key: string): BoldSegment[] {
+  const raw = t(key);
+  const parts: BoldSegment[] = [];
+  const regex = /\*\*(.*?)\*\*/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = regex.exec(raw)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ text: raw.slice(lastIndex, match.index), bold: false });
+    }
+    parts.push({ text: match[1], bold: true });
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < raw.length) {
+    parts.push({ text: raw.slice(lastIndex), bold: false });
+  }
+  return parts;
 }

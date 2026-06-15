@@ -1,9 +1,10 @@
 import { Image } from 'expo-image';
-import { type Href, useRouter } from 'expo-router';
+import { type Href, useFocusEffect, useRouter } from 'expo-router';
 import * as React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { isTutorialDone } from '../tutorial';
-import { t } from '../../game/i18n';
+import { t, setLanguage } from '../../game/i18n';
+import { loadSettings } from '../../game/storage';
 
 const DINO_SOURCES = [
   require('../../assets/images/dino-0.png'),
@@ -19,12 +20,26 @@ export default function HomeScreen() {
   const [dinoIdx] = React.useState(() => Math.floor(Math.random() * DINO_SOURCES.length));
   const { width } = useWindowDimensions();
   const cardMaxWidth = Math.min(500, width - 32);
+  const [, setRenderKey] = React.useState(0);
 
   React.useEffect(() => {
-    isTutorialDone().then((done) => {
+    (async () => {
+      const s = await loadSettings();
+      if (s.language) setLanguage(s.language);
+      setRenderKey(k => k + 1);
+      const done = await isTutorialDone();
       if (!done) router.replace('/tutorial' as Href);
-    });
+    })();
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadSettings().then(s => {
+        if (s.language) setLanguage(s.language);
+        setRenderKey(k => k + 1);
+      });
+    }, [])
+  );
 
   return (
     <View style={styles.screen}>

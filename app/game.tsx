@@ -46,6 +46,7 @@ import type { Cell, GameState } from '../game/types';
 
 import { fetchGlobalRankings, submitGlobalScore, type GlobalRankEntry, type RankPeriod } from '../game/firebase';
 import { getBgByLevel } from '../game/backgrounds';
+import { t, tf, dinoName, dinoNameShort, parseBold, setLanguage, getLanguage, type BoldSegment } from '../game/i18n';
 
 const BG_IMAGE = require('../assets/images/bg.png');
 
@@ -57,17 +58,17 @@ const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?
 const VERTICAL_OVERHEAD = STATUS_BAR_HEIGHT + 240;
 
 const VOLUME_OPTIONS = [
-  { label: '消', value: 0 },
-  { label: '小', value: 0.1 },
-  { label: '中', value: 0.3 },
-  { label: '大', value: 0.5 },
+  { labelKey: 'vol_mute', value: 0 },
+  { labelKey: 'vol_low', value: 0.1 },
+  { labelKey: 'vol_mid', value: 0.3 },
+  { labelKey: 'vol_high', value: 0.5 },
 ];
 
-const NUM_SIZE_OPTIONS: { label: string; key: Settings['numberSize']; size: number }[] = [
-  { label: '小', key: 'sm', size: 0.75 },
-  { label: '中', key: 'md', size: 0.95 },
-  { label: '大', key: 'lg', size: 1.2 },
-  { label: '特大', key: 'xl', size: 1.5 },
+const NUM_SIZE_OPTIONS: { labelKey: string; key: Settings['numberSize']; size: number }[] = [
+  { labelKey: 'numsize_sm', key: 'sm', size: 0.75 },
+  { labelKey: 'numsize_md', key: 'md', size: 0.95 },
+  { labelKey: 'numsize_lg', key: 'lg', size: 1.2 },
+  { labelKey: 'numsize_xl', key: 'xl', size: 1.5 },
 ];
 
 // No React.memo - cells must always re-render when grid changes
@@ -155,7 +156,7 @@ export default function GameScreen() {
   // Settings state
   const [settings, setSettings] = React.useState<Settings>({
     soundVolume: 0.3, bgmOn: true, hapticsOn: true, dropAnimation: true,
-    bombWaveEffect: true, unlockAnimationOn: true, numberSize: 'lg', playerName: '',
+    bombWaveEffect: true, unlockAnimationOn: true, numberSize: 'lg', playerName: '', language: 'ja' as const,
   });
   const [nameInput, setNameInput] = React.useState('');
   const settingsRef = React.useRef(settings);
@@ -172,6 +173,7 @@ export default function GameScreen() {
     (async () => {
       const savedSettings = await loadSettings();
       setSettings(savedSettings);
+      if (savedSettings.language) setLanguage(savedSettings.language);
       setNameInput(savedSettings.playerName);
       setSoundVolume(savedSettings.soundVolume);
       loadSoundEffects().then(() => setSoundVolume(savedSettings.soundVolume)); // re-apply volume after load
@@ -186,7 +188,7 @@ export default function GameScreen() {
       } else {
         const initial = createInitialState();
         setGameState(initial);
-        showPopup('ゲームスタート！');
+        showPopup(t('game_start'));
       }
       if (savedSettings.bgmOn) {
         try { await startBGM(); } catch {}
@@ -280,7 +282,7 @@ export default function GameScreen() {
   const bombMaxUnlockLabel = (oldLevel: number, newLevel: number) => {
     const oldMax = bombBoardMax(oldLevel);
     const newMax = bombBoardMax(newLevel);
-    return newMax > oldMax ? ` 火山上限+${newMax - oldMax}` : '';
+    return newMax > oldMax ? ` ${tf('volcano_max', newMax - oldMax)}` : '';
   };
 
   // Deferred popup ref - used to avoid setState during render (inside setGameState callbacks)
@@ -315,7 +317,7 @@ export default function GameScreen() {
   if (!gameState) {
     return (
       <ImageBackground source={BG_IMAGE} style={styles.screen} contentFit="cover">
-        <Text style={styles.loadingText}>読み込み中...</Text>
+        <Text style={styles.loadingText}>{t('loading')}</Text>
       </ImageBackground>
     );
   }
@@ -550,7 +552,7 @@ export default function GameScreen() {
       const leveled = ns.erasedGroups >= groupsNeeded(ns.level);
       // Build popup message: score + bonus + level up combined
       let popMsg = `+${pts}pts`;
-      if (bonus === 'bonus') { popMsg += ' ✨ ボーナス!'; }
+      if (bonus === 'bonus') { popMsg += ` ${t('bonus_popup')}`; }
       ns = applyLevelUp(ns, false); // don't show popup inside
       if (leveled) popMsg += ` 🎉 LV${ns.level}!${bombMaxUnlockLabel(prev.level, ns.level)}`;
       deferPopup(popMsg, leveled ? 250 : 150);
@@ -602,7 +604,7 @@ export default function GameScreen() {
       if (result.earnedAll) items.push('ALL×1');
       const oldBombMax = bombBoardMax(state.level);
       const newBombMax = bombBoardMax(result.newLevel);
-      if (newBombMax > oldBombMax) items.push(`火山上限+${newBombMax - oldBombMax}`);
+      if (newBombMax > oldBombMax) items.push(tf('volcano_max', newBombMax - oldBombMax));
       if (items.length > 0) msg += ` ${items.join(' ')}`;
       deferPopup(msg, 250);
     }
@@ -632,7 +634,7 @@ export default function GameScreen() {
       d.newDino = null;
       // カットイン演出（settings.unlockAnimationOn ON のとき）
       if (settings.unlockAnimationOn) {
-        setUnlockOverlay({ type: newType, name: DINO_NAMES[newType] ?? '?' });
+        setUnlockOverlay({ type: newType, name: dinoName(newType) });
         unlockOverlayAnim.setValue(0);
         unlockBoltAnim.setValue(0);
         if (settings.hapticsOn) {
@@ -712,7 +714,7 @@ export default function GameScreen() {
       preGameOverStateRef.current = { ...state };
       setRewardAdReady(isRewardedAdReady());
       setReviveModalVisible(true);
-      showPopup('GAME OVER', 3000);
+      showPopup(t('game_over'), 3000);
       return;
     }
 
@@ -736,7 +738,7 @@ export default function GameScreen() {
       setGameOverNameInput('');
       setNamePromptVisible(true);
     }
-    showPopup('GAME OVER', 3000);
+    showPopup(t('game_over'), 3000);
   };
 
   /** 復活処理: アイテム付与してゲーム再開 */
@@ -763,7 +765,7 @@ export default function GameScreen() {
     preGameOverStateRef.current = null;
 
     if (settings.bgmOn) { try { await startBGM(); } catch {} }
-    showPopup('復活！ アイテムGET！', 2000);
+    showPopup(t('revive_success'), 2000);
 
     // リワード広告を次回用にプリ���ード
     preloadRewardedAd();
@@ -817,7 +819,7 @@ export default function GameScreen() {
     hasUsedReviveRef.current = false;
     preGameOverStateRef.current = null;
     resetForNewGame(selectedStartLevel);
-    showPopup('ゲームスタート！');
+    showPopup(t('game_start'));
     preloadRewardedAd();
     if (settings.bgmOn) { try { await startBGM(); } catch {} }
   };
@@ -825,9 +827,9 @@ export default function GameScreen() {
 
   const handleRetire = () => {
     setMenuVisible(false);
-    Alert.alert('リタイア', '本当にリタイアしますか？', [
-      { text: 'キャンセル', style: 'cancel' },
-      { text: 'リタイア', style: 'destructive', onPress: () => handleGameOver(gameState, true) },
+    Alert.alert(t('retire'), t('retire_confirm'), [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('retire'), style: 'destructive', onPress: () => handleGameOver(gameState, true) },
     ]);
   };
 
@@ -843,7 +845,7 @@ export default function GameScreen() {
       checkAfterErase(ns);
       return ns;
     });
-    showPopup('シャッフル！');
+    showPopup(t('shuffle'));
   };
 
   const handleEraser = () => {
@@ -879,7 +881,7 @@ export default function GameScreen() {
           settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           if (hintTimer.current) clearTimeout(hintTimer.current);
           hintTimer.current = setTimeout(() => setHighlightCells(new Set()), 5000);
-          showPopup('🌋 ボルケーノをタップ！', 2000);
+          showPopup(t('hint_volcano'), 2000);
           return;
         }
         if (grid[r][c].type < 0) continue;
@@ -889,14 +891,14 @@ export default function GameScreen() {
           settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           if (hintTimer.current) clearTimeout(hintTimer.current);
           hintTimer.current = setTimeout(() => setHighlightCells(new Set()), 5000);
-          showPopup(`${DINO_NAMES[grid[r][c].type]}を${group.length}個消せる！`, 2000);
+          showPopup(tf('hint_erase', dinoName(grid[r][c].type), group.length), 2000);
           return;
         }
       }
     }
     // No valid moves found
     if (eraserCount > 0 || shuffleCount > 0 || henkouCount > 0 || allCount > 0) {
-      showPopup('アイテムを使おう！', 2000);
+      showPopup(t('hint_use_item'), 2000);
     }
   };
 
@@ -914,7 +916,7 @@ export default function GameScreen() {
       return ns;
     });
     settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    showPopup('DEL×10 → CHG×1 交換完了！', 200);
+    showPopup(t('exchange_chg_done'), 200);
   };
 
   const confirmExchangeALL = () => {
@@ -926,13 +928,13 @@ export default function GameScreen() {
       return ns;
     });
     settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    showPopup('DEL×15 → ALL×1 交換完了！', 200);
+    showPopup(t('exchange_all_done'), 200);
   };
 
   const handleExit = () => {
-    Alert.alert('終了', 'ゲームを保存して戻りますか？', [
-      { text: 'キャンセル', style: 'cancel' },
-      { text: '保存して戻る', onPress: async () => { await saveGameState(gameState); await stopBGM(); router.back(); } },
+    Alert.alert(t('exit'), t('exit_normal'), [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('exit_normal_save'), onPress: async () => { await saveGameState(gameState); await stopBGM(); router.back(); } },
     ]);
   };
 
@@ -973,12 +975,12 @@ export default function GameScreen() {
                     return nextUnlock ? (
                       <>
                         <Text style={styles.nextUnlockHint}>
-                          次の出現まで あと {nextUnlock.remaining}Lv
+                          {tf('char_next_unlock', nextUnlock.remaining)}
                         </Text>
                         <Image source={DINO_SOURCES[nextUnlock.nextType]} style={styles.nextUnlockIcon} contentFit="contain" />
                       </>
                     ) : (
-                      <Text style={styles.nextUnlockHint}>🎉 全キャラ解放！</Text>
+                      <Text style={styles.nextUnlockHint}>{t('char_all_unlocked')}</Text>
                     );
                   })()}
                 </View>
@@ -1077,7 +1079,7 @@ export default function GameScreen() {
         {/* Footer: dino panel - horizontal paging, 5 per page */}
         <View style={[styles.footerPanel, { marginHorizontal: horizontalPadding }]}>
           <View style={styles.footerLabelRow}>
-            <Text style={styles.footerLabel}>登場キャラクター</Text>
+            <Text style={styles.footerLabel}>{t('char_footer')}</Text>
           </View>
           <FlatList
             ref={footerListRef}
@@ -1140,15 +1142,24 @@ export default function GameScreen() {
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
           <View style={styles.menuPanel}>
             <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setRulesVisible(true); }}>
-              <Text style={styles.menuItemText}>📖 遊び方</Text>
+              <Text style={styles.menuItemText}>{t('menu_rules')}</Text>
             </TouchableOpacity>
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setSettingsVisible(true); }}>
-              <Text style={styles.menuItemText}>⚙ 設定</Text>
+              <Text style={styles.menuItemText}>{t('menu_settings')}</Text>
             </TouchableOpacity>
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuItem} onPress={handleRetire}>
-              <Text style={[styles.menuItemText, styles.menuItemDanger]}>🚪 リタイア</Text>
+              <Text style={[styles.menuItemText, styles.menuItemDanger]}>{t('menu_retire')}</Text>
+            </TouchableOpacity>
+            <View style={styles.menuDivider} />
+            <TouchableOpacity style={styles.menuItem} onPress={async () => {
+              setMenuVisible(false);
+              await saveGameState(gameState);
+              await stopBGM();
+              router.back();
+            }}>
+              <Text style={styles.menuItemText}>{t('menu_home')}</Text>
             </TouchableOpacity>
             {DEBUG_LV_SETTER && <>
               <View style={styles.menuDivider} />
@@ -1190,9 +1201,9 @@ export default function GameScreen() {
       {reviveModalVisible && <Modal visible={reviveModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>GAME OVER</Text>
-            <Text style={styles.modalScore}>スコア: {formatScore(score)}</Text>
-            <Text style={styles.modalLevel}>レベル: {level}</Text>
+            <Text style={styles.modalTitle}>{t('game_over')}</Text>
+            <Text style={styles.modalScore}>{tf('score_display', formatScore(score))}</Text>
+            <Text style={styles.modalLevel}>{tf('level_display', level)}</Text>
 
             {adState.isPremium && Platform.OS !== "ios" ? (
               /* Premium ユーザー: 広告なしで復活 */
@@ -1200,17 +1211,17 @@ export default function GameScreen() {
                 style={[styles.modalBtn, { backgroundColor: '#8b5cf6' }]}
                 onPress={handleRevivePremium}
               >
-                <Text style={styles.modalBtnText}>💎 アイテムを使って再開</Text>
+                <Text style={styles.modalBtnText}>{t('revive_premium')}</Text>
               </TouchableOpacity>
             ) : (
-              /* 無料ユーザー: リワード広告を見て���活 */
+              /* 無料ユーザー: リワード広告を見て復活 */
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: '#10b981', opacity: reviveLoading ? 0.5 : 1 }]}
                 onPress={handleReviveWithAd}
                 disabled={reviveLoading}
               >
                 <Text style={styles.modalBtnText}>
-                  {reviveLoading ? '読み込み中...' : '🎬 広告を見てアイテムGET'}
+                  {reviveLoading ? t('loading') : t('revive_ad')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -1220,7 +1231,7 @@ export default function GameScreen() {
               <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151' }}>
                 DEL×1  MIX×1  CHG×1  ALL×1
               </Text>
-              <Text style={{ fontSize: 12, color: '#6b7280' }}>を獲得してゲーム再開！</Text>
+              <Text style={{ fontSize: 12, color: '#6b7280' }}>{t('revive_reward')}</Text>
             </View>
 
             {/* そのまま終了 */}
@@ -1228,13 +1239,13 @@ export default function GameScreen() {
               style={[styles.modalBtn, styles.modalBtnSecondary]}
               onPress={handleSkipRevive}
             >
-              <Text style={styles.modalBtnTextSecondary}>そのまま終了</Text>
+              <Text style={styles.modalBtnTextSecondary}>{t('revive_exit')}</Text>
             </TouchableOpacity>
 
             {/* 無料ユーザーへのPremium訴求 */}
             {!adState.isPremium && Platform.OS !== "ios" && (
               <Text style={{ fontSize: 12, color: '#8b5cf6', textAlign: 'center', fontWeight: '700' }}>
-                💎 Premiumなら広告なしで毎回アイテムGET！
+                {t('revive_premium_promo')}
               </Text>
             )}
           </View>
@@ -1246,9 +1257,9 @@ export default function GameScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={{ fontSize: 32 }}>🦕</Text>
-            <Text style={styles.modalTitle}>プレイヤー名を登録</Text>
+            <Text style={styles.modalTitle}>{t('name_prompt_title')}</Text>
             <Text style={{ fontSize: 13, color: '#6b7280', textAlign: 'center' }}>
-              グローバルランキングに参加できます
+              {t('name_prompt_subtitle')}
             </Text>
             <TextInput
               style={{
@@ -1260,24 +1271,24 @@ export default function GameScreen() {
               }}
               value={gameOverNameInput}
               onChangeText={setGameOverNameInput}
-              placeholder="名前を入力（最大12文字）"
+              placeholder={t('name_placeholder')}
               placeholderTextColor="#9ca3af"
               maxLength={12}
               autoFocus
             />
-            <Text style={{ fontSize: 11, color: '#9ca3af' }}>※後から設定画面で変更できます</Text>
+            <Text style={{ fontSize: 11, color: '#9ca3af' }}>{t('name_change_hint')}</Text>
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 8, width: '100%' }}>
               <TouchableOpacity
                 style={[styles.modalBtn, { flex: 1, backgroundColor: '#e5e7eb' }]}
                 onPress={() => submitNameAndScore('')}
               >
-                <Text style={[styles.modalBtnText, { color: '#374151' }]}>スキップ</Text>
+                <Text style={[styles.modalBtnText, { color: '#374151' }]}>{t('skip')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, { flex: 1 }]}
                 onPress={() => submitNameAndScore(gameOverNameInput.trim())}
               >
-                <Text style={styles.modalBtnText}>決定！</Text>
+                <Text style={styles.modalBtnText}>{t('decide')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1288,12 +1299,12 @@ export default function GameScreen() {
       {gameOverVisible && <Modal visible={gameOverVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>GAME OVER</Text>
-            <Text style={styles.modalScore}>スコア: {formatScore(score)}</Text>
-            <Text style={styles.modalLevel}>レベル: {level}</Text>
+            <Text style={styles.modalTitle}>{t('game_over')}</Text>
+            <Text style={styles.modalScore}>{tf('score_display', formatScore(score))}</Text>
+            <Text style={styles.modalLevel}>{tf('level_display', level)}</Text>
             {selectableStartLevels.length > 1 && (
               <View style={styles.startLevelPanel}>
-                <Text style={styles.startLevelTitle}>次のゲームをどこから始めますか？</Text>
+                <Text style={styles.startLevelTitle}>{t('start_level_title')}</Text>
                 <View style={styles.startLevelRow}>
                   {selectableStartLevels.map(startLv => {
                     const selected = selectedStartLevel === startLv;
@@ -1304,16 +1315,16 @@ export default function GameScreen() {
                         onPress={() => setSelectedStartLevel(startLv)}
                       >
                         <Text style={[styles.startLevelBtnLv, selected && styles.startLevelBtnTextSelected]}>LV{startLv}</Text>
-                        <Text style={[styles.startLevelBtnSub, selected && styles.startLevelBtnTextSelected]}>から</Text>
+                        <Text style={[styles.startLevelBtnSub, selected && styles.startLevelBtnTextSelected]}>{t('start_level_from')}</Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
-                <Text style={styles.startLevelNote}>LV1はスコア0 / アイテム0。LV10以上は初期アイテム付き。</Text>
+                <Text style={styles.startLevelNote}>{t('start_level_note')}</Text>
               </View>
             )}
             <TouchableOpacity style={styles.modalBtn} onPress={handleRestart}>
-              <Text style={styles.modalBtnText}>もう一度プレイ</Text>
+              <Text style={styles.modalBtnText}>{t('play_again')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#f59e0b' }]} onPress={async () => {
               setGameOverVisible(false);
@@ -1326,7 +1337,7 @@ export default function GameScreen() {
               setRankTab('local');
               setRankingVisible(true);
             }}>
-              <Text style={styles.modalBtnText}>🏆 ランキングを確認</Text>
+              <Text style={styles.modalBtnText}>{t('check_ranking')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.modalBtn, styles.modalBtnSecondary]} onPress={async () => {
               setGameOverVisible(false);
@@ -1337,7 +1348,7 @@ export default function GameScreen() {
               await stopBGM();
               router.back();
             }}>
-              <Text style={styles.modalBtnTextSecondary}>タイトルに戻る</Text>
+              <Text style={styles.modalBtnTextSecondary}>{t('back_to_title')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1347,7 +1358,7 @@ export default function GameScreen() {
       {exchangeVisible && <Modal visible={exchangeVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>アイテム交換</Text>
+            <Text style={styles.modalTitle}>{t('exchange_title')}</Text>
             <Text style={{ fontSize: 13, color: '#6b7280', textAlign: 'center' }}>
               DEL ×{eraserCount}
             </Text>
@@ -1356,20 +1367,20 @@ export default function GameScreen() {
               onPress={confirmExchangeCHG}
               disabled={eraserCount < 10}
             >
-              <Text style={styles.modalBtnText}>DEL×10 → CHG×1</Text>
+              <Text style={styles.modalBtnText}>{t('exchange_del_chg')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modalBtn, { backgroundColor: '#dc2626', opacity: eraserCount >= 15 ? 1 : 0.4 }]}
               onPress={confirmExchangeALL}
               disabled={eraserCount < 15}
             >
-              <Text style={styles.modalBtnText}>DEL×15 → ALL×1</Text>
+              <Text style={styles.modalBtnText}>{t('exchange_del_all')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modalBtn, { backgroundColor: '#e5e7eb' }]}
               onPress={() => setExchangeVisible(false)}
             >
-              <Text style={[styles.modalBtnText, { color: '#374151' }]}>キャンセル</Text>
+              <Text style={[styles.modalBtnText, { color: '#374151' }]}>{t('cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1382,7 +1393,7 @@ export default function GameScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.rkDialog, { maxHeight: '85%' }]}>
             <View style={styles.rulesHeader}>
-              <Text style={styles.rulesHeaderText}>📖 遊び方</Text>
+              <Text style={styles.rulesHeaderText}>{t('rules_header')}</Text>
               <TouchableOpacity style={styles.rulesCloseX} onPress={() => { setRulesVisible(false); setRulesPage(0); }}>
                 <Text style={styles.rulesCloseXText}>✕</Text>
               </TouchableOpacity>
@@ -1390,58 +1401,62 @@ export default function GameScreen() {
             <ScrollView style={{ width: '100%', padding: 16 }} showsVerticalScrollIndicator={false}>
 
               {rulesPage === 0 && (<View style={styles.rulesPage}>
-                <Text style={styles.rulesTitle}>① 基本ルール</Text>
+                <Text style={styles.rulesTitle}>{t('rules_s1_title')}</Text>
                 <Text style={styles.rulesText}>
-                  同じ種類の恐竜が「表示の数」と同じ数だけつながっているときにタップで消せます。
+                  {t('rules_s1_body')}
                 </Text>
                 <View style={styles.rulesTable}>
                   <View style={styles.rulesTableHeader}>
-                    <Text style={[styles.rulesTableCell, { flex: 2 }]}>恐竜</Text>
-                    <Text style={styles.rulesTableCell}>表示</Text>
-                    <Text style={[styles.rulesTableCell, { flex: 2 }]}>必要な連結数</Text>
+                    <Text style={[styles.rulesTableCell, { flex: 2 }]}>{t('rules_th_dino')}</Text>
+                    <Text style={styles.rulesTableCell}>{t('rules_th_display')}</Text>
+                    <Text style={[styles.rulesTableCell, { flex: 2 }]}>{t('rules_th_required')}</Text>
                   </View>
                   {[
-                    ['ティラノサウルス', '1', '1個（単体でOK）'],
-                    ['ブラキオサウルス', '2', '2個以上'],
-                    ['プテラノドン', '3', '3個以上'],
-                    ['トリケラトプス', '4', '4個以上'],
-                    ['ステゴサウルス', '5', '5個以上'],
-                    ['スピノサウルス', '6', '6個以上'],
-                  ].map(([name, num, req], i) => (
+                    [0, '1', tf('rules_single_ok', 1)],
+                    [1, '2', tf('rules_n_or_more', 2)],
+                    [2, '3', tf('rules_n_or_more', 3)],
+                    [3, '4', tf('rules_n_or_more', 4)],
+                    [4, '5', tf('rules_n_or_more', 5)],
+                    [5, '6', tf('rules_n_or_more', 6)],
+                  ].map(([idx, num, req], i) => (
                     <View key={i} style={styles.rulesTableRow}>
-                      <Text style={[styles.rulesTableCell, { flex: 2 }]}>{name}</Text>
+                      <Text style={[styles.rulesTableCell, { flex: 2 }]}>{dinoName(idx as number)}</Text>
                       <Text style={[styles.rulesTableCell, styles.rulesBold]}>{num}</Text>
                       <Text style={[styles.rulesTableCell, { flex: 2 }]}>{req}</Text>
                     </View>
                   ))}
                 </View>
-                <Text style={styles.rulesTip}>💡 タップすると消えるグループが黄色でハイライトされます！</Text>
+                <Text style={styles.rulesTip}>{t('rules_s1_tip')}</Text>
               </View>)}
 
               {rulesPage === 1 && (<View style={styles.rulesPage}>
-                <Text style={styles.rulesTitle}>② スコアのしくみ</Text>
+                <Text style={styles.rulesTitle}>{t('rules_s2_title')}</Text>
                 <Text style={styles.rulesText}>
-                  スコアは <Text style={styles.rulesBold}>消えた枚数 × 表示の数値</Text> で加算されます。
+                  {parseBold('rules_s2_body1').map((seg, i) =>
+                    seg.bold ? <Text key={i} style={styles.rulesBold}>{seg.text}</Text> : seg.text
+                  )}
                 </Text>
                 <Text style={styles.rulesText}>
-                  グループが大きいほど、また表示数値が大きい恐竜ほど<Text style={styles.rulesBold}>高得点</Text>！
+                  {parseBold('rules_s2_body2').map((seg, i) =>
+                    seg.bold ? <Text key={i} style={styles.rulesBold}>{seg.text}</Text> : seg.text
+                  )}
                 </Text>
                 <Text style={styles.rulesTip}>
-                  ✨ <Text style={styles.rulesBold}>レアボーナス</Text>{'\n'}
-                  スピノサウルス以上の恐竜を消すとレアボーナス加算！{'\n'}
-                  難しい恐竜ほど高ボーナス{'\n\n'}
-                  📈 <Text style={styles.rulesBold}>レベル係数</Text>：LV3からスコアUP{'\n'}
-                  LV3:1.1倍 → LV10:1.35倍 → LV30:1.7倍 → LV50+:2.0倍〜
+                  {parseBold('rules_s2_rare').map((seg, i) =>
+                    seg.bold ? <Text key={i} style={styles.rulesBold}>{seg.text}</Text> : seg.text
+                  )}
                 </Text>
                 <Text style={styles.rulesTip}>
-                  💡 ティラノサウルス（表示1）は1個から消せるので詰まったときの救済にも！
+                  {t('rules_s2_tip')}
                 </Text>
               </View>)}
 
               {rulesPage === 2 && (<View style={styles.rulesPage}>
-                <Text style={styles.rulesTitle}>③ 噴火 🌋</Text>
+                <Text style={styles.rulesTitle}>{t('rules_s3_title')}</Text>
                 <Text style={styles.rulesText}>
-                  🌋をタップすると、その噴火がある<Text style={styles.rulesBold}>縦一列＋横一列</Text>を一気に消します。
+                  {parseBold('rules_s3_body1').map((seg, i) =>
+                    seg.bold ? <Text key={i} style={styles.rulesBold}>{seg.text}</Text> : seg.text
+                  )}
                 </Text>
                 <View style={styles.rulesDiagram}>
                   <View style={{ alignItems: 'center' }}>
@@ -1451,29 +1466,31 @@ export default function GameScreen() {
                   </View>
                 </View>
                 <Text style={styles.rulesText}>
-                  🌋 隣の噴火に連鎖して一気に爆発することも！
+                  {t('rules_s3_body2')}
                 </Text>
                 <Text style={styles.rulesTip}>
-                  噴火はLV1〜3で多め。盤上に最大3個。
+                  {t('rules_s3_tip')}
                 </Text>
               </View>)}
 
               {rulesPage === 3 && (<View style={styles.rulesPage}>
-                <Text style={styles.rulesTitle}>④ レベルアップ＆特別ボタン</Text>
+                <Text style={styles.rulesTitle}>{t('rules_s4_title')}</Text>
                 <Text style={styles.rulesText}>
-                  <Text style={styles.rulesBold}>10グループ</Text>消すごとにレベルアップ！新キャラクターが出現します。
+                  {parseBold('rules_s4_body').map((seg, i) =>
+                    seg.bold ? <Text key={i} style={styles.rulesBold}>{seg.text}</Text> : seg.text
+                  )}
                 </Text>
                 <View style={styles.rulesTable}>
                   <View style={styles.rulesTableHeader}>
-                    <Text style={styles.rulesTableCell}>解放LV</Text>
-                    <Text style={styles.rulesTableCell}>ボタン</Text>
-                    <Text style={[styles.rulesTableCell, { flex: 3 }]}>効果</Text>
+                    <Text style={styles.rulesTableCell}>{t('rules_th_unlock_lv')}</Text>
+                    <Text style={styles.rulesTableCell}>{t('rules_th_button')}</Text>
+                    <Text style={[styles.rulesTableCell, { flex: 3 }]}>{t('rules_th_effect')}</Text>
                   </View>
                   {[
-                    ['LV3〜', '🗑DEL', '好きな1マスを消去。LVアップごとに+1'],
-                    ['LV5〜', '🔀MIX', 'グリッド全体をシャッフル'],
-                    ['LV10〜', '🔄CHG', '1種類を基本6種のどれかに全変換'],
-                    ['LV20〜', '💥ALL', '1種類の恐竜を盤面から全消去'],
+                    ['LV3〜', '🗑DEL', t('rules_item_del')],
+                    ['LV5〜', '🔀MIX', t('rules_item_mix')],
+                    ['LV10〜', '🔄CHG', t('rules_item_chg')],
+                    ['LV20〜', '💥ALL', t('rules_item_all')],
                   ].map(([lv, btn, effect], i) => (
                     <View key={i} style={styles.rulesTableRow}>
                       <Text style={styles.rulesTableCell}>{lv}</Text>
@@ -1483,133 +1500,92 @@ export default function GameScreen() {
                   ))}
                 </View>
                 <Text style={styles.rulesTip}>
-                  💡 DEL・MIX・CHG・ALLが残っているとゲームオーバーを回避！{'\n'}
-                  ボタンが光ったら使いどき！{'\n'}
-                  🔁 DEL×10 → CHG×1、DEL×15 → ALL×1 に交換可能！
+                  {t('rules_s4_tip')}
                 </Text>
               </View>)}
 
               {rulesPage === 4 && (<View style={styles.rulesPage}>
-                <Text style={styles.rulesTitle}>⑤ 新キャラクターの出現</Text>
+                <Text style={styles.rulesTitle}>{t('rules_s5_title')}</Text>
                 <Text style={styles.rulesText}>
-                  レベルが上がると、より強力な新キャラクターが出現します。
+                  {t('rules_s5_body')}
                 </Text>
                 <View style={styles.rulesTable}>
                   <View style={styles.rulesTableHeader}>
-                    <Text style={styles.rulesTableCell}>解放LV</Text>
-                    <Text style={[styles.rulesTableCell, { flex: 2 }]}>恐竜</Text>
-                    <Text style={styles.rulesTableCell}>表示</Text>
-                    <Text style={styles.rulesTableCell}>必要数</Text>
+                    <Text style={styles.rulesTableCell}>{t('rules_th_unlock_lv')}</Text>
+                    <Text style={[styles.rulesTableCell, { flex: 2 }]}>{t('rules_th_dino')}</Text>
+                    <Text style={styles.rulesTableCell}>{t('rules_th_display')}</Text>
+                    <Text style={styles.rulesTableCell}>{t('rules_th_needed')}</Text>
                   </View>
                   {[
-                    ['LV5', 'アロサウルス', '7', '7個'],
-                    ['LV10', 'パキケファロ', '8', '8個'],
-                    ['LV15', 'モササウルス', '9', '9個'],
-                    ['LV20', 'アンキロ', '10', '10個'],
-                    ['LV25', 'マイアサウラ', '11', '11個'],
-                    ['LV30', 'ケツァルコアトル', '12', '12個'],
-                    ['LV35', 'マンモス', '13', '13個'],
-                  ].map(([lv, name, num, req], i) => (
+                    ['LV5', 6, '7', tf('rules_n_pcs', 7)],
+                    ['LV10', 7, '8', tf('rules_n_pcs', 8)],
+                    ['LV15', 8, '9', tf('rules_n_pcs', 9)],
+                    ['LV20', 9, '10', tf('rules_n_pcs', 10)],
+                    ['LV25', 10, '11', tf('rules_n_pcs', 11)],
+                    ['LV30', 11, '12', tf('rules_n_pcs', 12)],
+                    ['LV35', 12, '13', tf('rules_n_pcs', 13)],
+                  ].map(([lv, idx, num, req], i) => (
                     <View key={i} style={styles.rulesTableRow}>
                       <Text style={styles.rulesTableCell}>{lv}</Text>
-                      <Text style={[styles.rulesTableCell, { flex: 2 }]}>{name}</Text>
+                      <Text style={[styles.rulesTableCell, { flex: 2 }]}>{dinoNameShort(idx as number)}</Text>
                       <Text style={[styles.rulesTableCell, styles.rulesBold]}>{num}</Text>
                       <Text style={styles.rulesTableCell}>{req}</Text>
                     </View>
                   ))}
                   <View style={[styles.rulesTableRow, { backgroundColor: '#fef3c7' }]}>
                     <Text style={[styles.rulesTableCell, { flex: 1 }]}>LV40〜</Text>
-                    <Text style={[styles.rulesTableCell, { flex: 5, textAlign: 'center', fontStyle: 'italic', color: '#92400e' }]}>??? 何が出るかはお楽しみ！</Text>
+                    <Text style={[styles.rulesTableCell, { flex: 5, textAlign: 'center', fontStyle: 'italic', color: '#92400e' }]}>{t('rules_mystery')}</Text>
                   </View>
                 </View>
                 <Text style={styles.rulesTip}>
-                  ⚠️ 新種は連結数が多くて消しにくい分、高得点チャンス！{'\n'}
-                  🎁 大グループで消すと固定ボーナス加算！{'\n'}
-                  ✨ ヘッダーに「次の出現まで あと N Lv」を常時表示！{'\n'}
-                  ⚡ 新キャラ解放時はカットイン演出！（設定で ON/OFF 切替可）
+                  {t('rules_s5_tip')}
                 </Text>
               </View>)}
 
               {rulesPage === 5 && (<View style={styles.rulesPage}>
-                <Text style={styles.rulesTitle}>📋 更新履歴</Text>
+                <Text style={styles.rulesTitle}>{t('rules_changelog_title')}</Text>
                 <Text style={styles.rulesText}>
-                  <Text style={styles.rulesBold}>v5.5.1</Text>（2026/05/15）{'\n'}
-                  ・上部ヘッダーの画面崩れを修正（小型 iPhone 対応・端末幅連動マージン）{'\n'}
-                  ・進捗ドットを 1本の進捗バーに変更（コンパクト化）{'\n'}
-                  ・交換ボタンのテキストを短縮（「✨ 交換 N/10」→「✨ N/10」）{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.5.0</Text>（2026/05/14）{'\n'}
-                  ・「次の出現まで あと N Lv」ゲージをヘッダーに常時表示{'\n'}
-                  ・新キャラ解放時のカットイン演出を追加（設定で ON/OFF 切替可）{'\n'}
-                  ・開始LV選択を細分化：LV1/10/30/50/70/90/100 の7択に拡張{'\n'}
-                  ・開始LV別の初期アイテム数を再調整（過多解消）{'\n'}
-                  ・ヘッダーレイアウト2段化（LV/SCORE 大型化・ヒント→HINT）{'\n'}
-                  ・背景切替を序盤密集化（LV5/15/30/50/100/150/250/400）{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.4.1</Text>（2026/05/10）{'\n'}
-                  ・火山(爆弾)上限の調整：LV100以上で4個に統一{'\n'}
-                  ・リワード広告の安定化（放置時の二重表示を解消）{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.4.0</Text>（2026/05/06）{'\n'}
-                  ・ゲームオーバー時に開始LVを選択可能（LV1/50/70/90から再スタート）{'\n'}
-                  ・最高到達LVを設定画面で確認可能に{'\n'}
-                  ・高レベル時の火山(爆弾)上限アップ（LV100で+1個）{'\n'}
-                  ・LV50以上の出現バランス再調整{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.3.9</Text>（2026/05/01）{'\n'}
-                  ・リワード広告の安定性向上・iOS 26（SDK 55）対応{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.3.3</Text>（2026/04/17）{'\n'}
-                  ・App Store言語設定を日本語に修正{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.3.1</Text>（2026/04/13）{'\n'}
-                  ・Lv70以降の出現バランス調整（レア恐竜の出現率UP）{'\n'}
-                  ・広告読み込み失敗時にフリーズしないよう改善{'\n'}
-                  ・iOS版リワード広告の設定修正{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.3.0</Text>（2026/04/07）{'\n'}
-                  ・新キャラ7体追加（世界樹・海・大地・空・星・虚無・∞）{'\n'}
-                  ・LV500まで解放キャラ拡張{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.2.2</Text>（2026/04/05）{'\n'}
-                  ・ゲームオーバー時の復活機能追加（広告視聴でアイテムGET）{'\n'}
-                  ・Premium（広告OFF＋復活特典）追加{'\n'}
-                  ・リタイア時は復活モーダルを表示しないよう改善{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.2.0</Text>（2026/04/04）{'\n'}
-                  ・スコアポップアップ表示タイミング改善{'\n'}
-                  ・序盤スコア倍率強化（LV3から段階的に上昇）{'\n'}
-                  ・火山爆発後の空白待機追加{'\n'}
-                  ・新恐竜登場時のカード回転演出{'\n'}
-                  ・未解放キャラに解放レベルを表示{'\n'}
-                  ・MIX効果音・ゲームオーバー音の改善{'\n'}
-                  ・同じ数字補充時の落下アニメーション修正{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.1.0</Text>（2026/04/01）{'\n'}
-                  ・一括消去ボタン（ALL）追加{'\n'}
-                  ・新恐竜アンロック演出をフッター演出に変更{'\n'}
-                  ・高レベル恐竜の報酬バランス見直し{'\n'}
-                  ・落下アニメーション追加{'\n'}
-                  ・タッチ判定改善{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.0.1</Text>（2026/03/25）{'\n'}
-                  ・新キャラ追加：マイアサウラ、ヤマタノオロチ（全19種）{'\n'}
-                  ・ランキング：デイリー/週間/月間の3タブに変更{'\n'}
-                  ・ランキング表示の不具合修正{'\n'}
-                  ・高レベル時のUI表示改善{'\n'}
-                  ・ゲームオーバー画面にランキング確認ボタン追加{'\n'}
-                  ・パフォーマンス改善（画像最適化・データ取得効率化）{'\n'}
-                  {'\n'}
-                  <Text style={styles.rulesBold}>v5.0.0</Text>（2026/03/24）{'\n'}
-                  ・広告非表示パック（アプリ内購入）{'\n'}
-                  ・アイテム交換機能（DEL×10→CHG×1）{'\n'}
-                  ・月間ランキング追加{'\n'}
-                  ・振動ON/OFF設定{'\n'}
-                  ・ゲームオーバー時の名前登録{'\n'}
-                  ・スコアバランス調整（固定ボーナス+レベル係数）{'\n'}
-                  ・キャラ出現バランス最適化{'\n'}
-                  ・パフォーマンス大幅改善{'\n'}
-                  ・表記変更（🗑DEL / 🔀MIX / 🔄CHG）
+                  <Text style={styles.rulesBold}>v5.6.0</Text>{'（2026/06/15）\n'}
+                  {t('changelog_v560')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.5.1</Text>{'（2026/05/15）\n'}
+                  {t('changelog_v551')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.5.0</Text>{'（2026/05/14）\n'}
+                  {t('changelog_v550')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.4.1</Text>{'（2026/05/10）\n'}
+                  {t('changelog_v541')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.4.0</Text>{'（2026/05/06）\n'}
+                  {t('changelog_v540')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.3.9</Text>{'（2026/05/01）\n'}
+                  {t('changelog_v539')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.3.3</Text>{'（2026/04/17）\n'}
+                  {t('changelog_v533')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.3.1</Text>{'（2026/04/13）\n'}
+                  {t('changelog_v531')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.3.0</Text>{'（2026/04/07）\n'}
+                  {t('changelog_v530')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.2.2</Text>{'（2026/04/05）\n'}
+                  {t('changelog_v522')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.2.0</Text>{'（2026/04/04）\n'}
+                  {t('changelog_v520')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.1.0</Text>{'（2026/04/01）\n'}
+                  {t('changelog_v510')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.0.1</Text>{'（2026/03/25）\n'}
+                  {t('changelog_v501')}
+                  {'\n\n'}
+                  <Text style={styles.rulesBold}>v5.0.0</Text>{'（2026/03/24）\n'}
+                  {t('changelog_v500')}
                 </Text>
               </View>)}
 
@@ -1631,17 +1607,17 @@ export default function GameScreen() {
             <View style={[styles.rulesNav, { paddingHorizontal: 16, paddingBottom: 12 }]}>
               {rulesPage > 0 ? (
                 <TouchableOpacity onPress={() => setRulesPage(rulesPage - 1)}>
-                  <Text style={styles.rulesNavText}>◀ 前へ</Text>
+                  <Text style={styles.rulesNavText}>{t('rules_nav_prev')}</Text>
                 </TouchableOpacity>
               ) : <View />}
               <Text style={styles.rulesPageNum}>{rulesPage + 1}/6</Text>
               {rulesPage < 5 ? (
                 <TouchableOpacity onPress={() => setRulesPage(rulesPage + 1)}>
-                  <Text style={styles.rulesNavText}>次へ ▶</Text>
+                  <Text style={styles.rulesNavText}>{t('rules_nav_next')}</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity onPress={() => { setRulesVisible(false); setRulesPage(0); }}>
-                  <Text style={styles.rulesNavText}>閉じる</Text>
+                  <Text style={styles.rulesNavText}>{t('close')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1655,12 +1631,12 @@ export default function GameScreen() {
           <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20 }}>
             <View style={styles.settingsCard}>
               <View style={styles.settingsHeader}>
-                <Text style={styles.settingsHeaderText}>⚙ 設定</Text>
+                <Text style={styles.settingsHeaderText}>{t('settings_title')}</Text>
               </View>
 
               {/* Sound Volume */}
               <View style={styles.settingSection}>
-                <Text style={styles.settingLabel}>🔊 効果音</Text>
+                <Text style={styles.settingLabel}>{t('settings_sound')}</Text>
                 <View style={styles.settingBtnRow}>
                   {VOLUME_OPTIONS.map(opt => (
                     <TouchableOpacity
@@ -1669,7 +1645,7 @@ export default function GameScreen() {
                       onPress={() => updateSettings({ soundVolume: opt.value })}
                     >
                       <Text style={[styles.volBtnText, settings.soundVolume === opt.value && styles.volBtnTextActive]}>
-                        {opt.label}
+                        {t(opt.labelKey)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -1681,7 +1657,7 @@ export default function GameScreen() {
 
               {/* Number Size */}
               <View style={styles.settingSection}>
-                <Text style={styles.settingLabel}>🔢 数値サイズ</Text>
+                <Text style={styles.settingLabel}>{t('settings_numsize')}</Text>
                 <View style={styles.settingBtnRow}>
                   {NUM_SIZE_OPTIONS.map(opt => (
                     <TouchableOpacity
@@ -1690,7 +1666,7 @@ export default function GameScreen() {
                       onPress={() => updateSettings({ numberSize: opt.key })}
                     >
                       <Text style={[styles.volBtnText, settings.numberSize === opt.key && styles.volBtnTextActive]}>
-                        {opt.label}
+                        {t(opt.labelKey)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -1701,7 +1677,7 @@ export default function GameScreen() {
               {/* BGM */}
               <View style={styles.settingSection}>
                 <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>🎵 BGM</Text>
+                  <Text style={styles.settingLabel}>{t('settings_bgm')}</Text>
                   <TouchableOpacity
                     style={[styles.toggleBtn, settings.bgmOn ? styles.toggleOn : styles.toggleOff]}
                     onPress={async () => {
@@ -1712,7 +1688,7 @@ export default function GameScreen() {
                     }}
                   >
                     <Text style={[styles.toggleText, settings.bgmOn && styles.toggleTextOn]}>
-                      {settings.bgmOn ? 'ON' : 'OFF'}
+                      {settings.bgmOn ? t('on') : t('off')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1735,13 +1711,13 @@ export default function GameScreen() {
               {/* Haptics */}
               <View style={styles.settingSection}>
                 <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>📳 振動</Text>
+                  <Text style={styles.settingLabel}>{t('settings_haptics')}</Text>
                   <TouchableOpacity
                     style={[styles.toggleBtn, settings.hapticsOn ? styles.toggleOn : styles.toggleOff]}
                     onPress={() => updateSettings({ hapticsOn: !settings.hapticsOn })}
                   >
                     <Text style={[styles.toggleText, settings.hapticsOn && styles.toggleTextOn]}>
-                      {settings.hapticsOn ? 'ON' : 'OFF'}
+                      {settings.hapticsOn ? t('on') : t('off')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1751,13 +1727,13 @@ export default function GameScreen() {
               {/* Drop Animation */}
               <View style={styles.settingSection}>
                 <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>🫧 落下アニメ</Text>
+                  <Text style={styles.settingLabel}>{t('settings_drop_anim')}</Text>
                   <TouchableOpacity
                     style={[styles.toggleBtn, settings.dropAnimation ? styles.toggleOn : styles.toggleOff]}
                     onPress={() => updateSettings({ dropAnimation: !settings.dropAnimation })}
                   >
                     <Text style={[styles.toggleText, settings.dropAnimation && styles.toggleTextOn]}>
-                      {settings.dropAnimation ? 'ON' : 'OFF'}
+                      {settings.dropAnimation ? t('on') : t('off')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1767,13 +1743,13 @@ export default function GameScreen() {
               {/* Unlock Animation */}
               <View style={styles.settingSection}>
                 <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>⚡ キャラ解放演出</Text>
+                  <Text style={styles.settingLabel}>{t('settings_unlock_anim')}</Text>
                   <TouchableOpacity
                     style={[styles.toggleBtn, settings.unlockAnimationOn ? styles.toggleOn : styles.toggleOff]}
                     onPress={() => updateSettings({ unlockAnimationOn: !settings.unlockAnimationOn })}
                   >
                     <Text style={[styles.toggleText, settings.unlockAnimationOn && styles.toggleTextOn]}>
-                      {settings.unlockAnimationOn ? 'ON' : 'OFF'}
+                      {settings.unlockAnimationOn ? t('on') : t('off')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1782,13 +1758,13 @@ export default function GameScreen() {
 
               {/* Player Name */}
               <View style={styles.settingSection}>
-                <Text style={styles.settingLabel}>🏷 プレイヤー名</Text>
+                <Text style={styles.settingLabel}>{t('settings_player_name')}</Text>
                 <View style={styles.nameRow}>
                   <TextInput
                     style={styles.nameInput}
                     value={nameInput}
                     onChangeText={setNameInput}
-                    placeholder="名前を入力"
+                    placeholder={t('settings_name_placeholder')}
                     maxLength={12}
                   />
                   <TouchableOpacity
@@ -1798,22 +1774,22 @@ export default function GameScreen() {
                       settings.hapticsOn && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     }}
                   >
-                    <Text style={styles.nameSaveBtnText}>保存</Text>
+                    <Text style={styles.nameSaveBtnText}>{t('save')}</Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.nameHint}>現在: {settings.playerName || '未設定'}</Text>
+                <Text style={styles.nameHint}>{tf('settings_name_current', settings.playerName || t('settings_name_none'))}</Text>
               </View>
 
               <View style={styles.settingDivider} />
 
               {/* Premium & Purchase */}
               {Platform.OS !== "ios" && <View style={styles.settingSection}>
-                <Text style={styles.settingLabel}>💎 Premium</Text>
+                <Text style={styles.settingLabel}>{t('settings_premium')}</Text>
                 {adState.isPremium ? (
                   <View style={{ paddingVertical: 6 }}>
-                    <Text style={[styles.settingSubLabel, { fontWeight: '700' }]}>Premium 有効 ✅</Text>
+                    <Text style={[styles.settingSubLabel, { fontWeight: '700' }]}>{t('settings_premium_active')}</Text>
                     <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                      広告OFF ＋ ゲームオーバー復活特典
+                      {t('settings_premium_desc')}
                     </Text>
                   </View>
                 ) : (
@@ -1822,10 +1798,10 @@ export default function GameScreen() {
                       style={[styles.nameSaveBtn, { alignSelf: 'flex-start', backgroundColor: '#8b5cf6' }]}
                       onPress={adState.buyPremium}
                     >
-                      <Text style={styles.nameSaveBtnText}>Premiumを購入する</Text>
+                      <Text style={styles.nameSaveBtnText}>{t('settings_premium_buy')}</Text>
                     </TouchableOpacity>
                     <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
-                      広告OFF ＋ ゲームオーバー復活特典
+                      {t('settings_premium_desc')}
                     </Text>
                   </View>
                 )}
@@ -1834,14 +1810,14 @@ export default function GameScreen() {
                   onPress={adState.restore}
                 >
                   <Text style={[styles.settingSubLabel, { color: '#3b82f6', textDecorationLine: 'underline' }]}>
-                    購入を復元する
+                    {t('settings_premium_restore')}
                   </Text>
                 </TouchableOpacity>
 
                 {/* Debug toggle - dev only (Android Premium セクション内・Premium ON/OFF) */}
                 {__DEV__ && (
                 <View style={[styles.settingSubRow, { borderTopWidth: 1, borderTopColor: '#f3f4f6', marginTop: 6, paddingTop: 6 }]}>
-                  <Text style={[styles.settingSubLabel, { color: '#d1d5db' }]}>🛠 デバッグ</Text>
+                  <Text style={[styles.settingSubLabel, { color: '#d1d5db' }]}>{t('settings_debug')}</Text>
                   <TouchableOpacity
                     style={[styles.toggleBtn, !adState.isPremium ? styles.toggleOn : styles.toggleOff]}
                     onPress={() => adState.setAdRemoved(!adState.isPremium)}
@@ -1854,17 +1830,39 @@ export default function GameScreen() {
                 )}
               </View>}
 
+              {/* Language */}
+              <View style={styles.settingDivider} />
+              <View style={styles.settingSection}>
+                <Text style={styles.settingLabel}>{t('settings_language')}</Text>
+                <View style={styles.settingBtnRow}>
+                  {(['ja', 'en'] as const).map(lang => (
+                    <TouchableOpacity
+                      key={lang}
+                      style={[styles.volBtn, settings.language === lang && styles.volBtnActive]}
+                      onPress={() => {
+                        updateSettings({ language: lang });
+                        setLanguage(lang);
+                      }}
+                    >
+                      <Text style={[styles.volBtnText, settings.language === lang && styles.volBtnTextActive]}>
+                        {lang === 'ja' ? t('lang_ja') : t('lang_en')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
               {/* 最高到達LV（表示のみ・ユーザー向け） */}
               <View style={styles.settingDivider} />
               <View style={styles.settingSection}>
                 <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>🏆 最高到達LV</Text>
+                  <Text style={styles.settingLabel}>{t('settings_max_lv')}</Text>
                   <Text style={[styles.settingLabel, { color: '#6b7280' }]}>{maxReachedLevel}</Text>
                 </View>
               </View>
 
               <TouchableOpacity style={styles.settingsCloseBtn} onPress={() => setSettingsVisible(false)}>
-                <Text style={styles.settingsCloseBtnText}>閉じる</Text>
+                <Text style={styles.settingsCloseBtnText}>{t('close')}</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -1878,15 +1876,15 @@ export default function GameScreen() {
             {dinoInfoPopup !== null && (
               <>
                 <Image source={DINO_SOURCES[dinoInfoPopup]} style={styles.charPopupImage} contentFit="contain" />
-                <Text style={styles.charPopupName}>{DINO_NAMES[dinoInfoPopup]} {DINO_EMOJI[dinoInfoPopup]}</Text>
+                <Text style={styles.charPopupName}>{dinoName(dinoInfoPopup)} {DINO_EMOJI[dinoInfoPopup]}</Text>
                 <Text style={styles.charPopupDesc}>
-                  数字: {dinoInfoPopup + 1}（{dinoInfoPopup + 1}個つながると消せる）
+                  {tf('char_desc', dinoInfoPopup + 1)}
                 </Text>
                 <Text style={[styles.charPopupDesc, { color: '#9ca3af' }]}>
-                  {DINO_UNLOCK_LV[dinoInfoPopup] === 0 ? '初期から使用可能' : `LV${DINO_UNLOCK_LV[dinoInfoPopup]}で解放`}
+                  {DINO_UNLOCK_LV[dinoInfoPopup] === 0 ? t('char_unlock_initial') : tf('char_unlock_lv', DINO_UNLOCK_LV[dinoInfoPopup])}
                 </Text>
                 <TouchableOpacity style={styles.modalBtn} onPress={() => setDinoInfoPopup(null)}>
-                  <Text style={styles.modalBtnText}>閉じる</Text>
+                  <Text style={styles.modalBtnText}>{t('close')}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -1900,7 +1898,7 @@ export default function GameScreen() {
           <View style={[styles.rkDialog]}>
             {/* Header */}
             <View style={styles.rkHeader}>
-              <Text style={styles.rkHeaderText}>🏆 ランキング</Text>
+              <Text style={styles.rkHeaderText}>{t('ranking_title')}</Text>
               <TouchableOpacity style={styles.rkCloseX} onPress={() => { setRankingVisible(false); setGlobalRankings([]); }}>
                 <Text style={styles.rkCloseXText}>✕</Text>
               </TouchableOpacity>
@@ -1912,7 +1910,7 @@ export default function GameScreen() {
                 style={[styles.rkTab, rankTab === 'local' && styles.rkTabActive]}
                 onPress={() => setRankTab('local')}
               >
-                <Text style={[styles.rkTabText, rankTab === 'local' && styles.rkTabTextActive]}>📱 端末</Text>
+                <Text style={[styles.rkTabText, rankTab === 'local' && styles.rkTabTextActive]}>{t('ranking_local')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.rkTab, rankTab === 'global' && styles.rkTabActive]}
@@ -1924,7 +1922,7 @@ export default function GameScreen() {
                   setLoadingGlobal(false);
                 }}
               >
-                <Text style={[styles.rkTabText, rankTab === 'global' && styles.rkTabTextActive]}>🌍 グローバル</Text>
+                <Text style={[styles.rkTabText, rankTab === 'global' && styles.rkTabTextActive]}>{t('ranking_global')}</Text>
               </TouchableOpacity>
             </View>
 
@@ -1944,7 +1942,7 @@ export default function GameScreen() {
                     }}
                   >
                     <Text style={[styles.rkPeriodText, rankPeriod === p && styles.rkPeriodTextActive]}>
-                      {p === 'daily' ? 'デイリー' : p === 'weekly' ? '週間' : '月間'}
+                      {p === 'daily' ? t('ranking_daily') : p === 'weekly' ? t('ranking_weekly') : t('ranking_monthly')}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -1955,16 +1953,16 @@ export default function GameScreen() {
             <ScrollView style={styles.rkBody}>
               {/* Table header */}
               <View style={styles.rkTh}>
-                <Text style={[styles.rkThCell, { width: 36 }]}>順位</Text>
-                <Text style={[styles.rkThCell, { width: 80 }]}>スコア</Text>
-                {rankTab === 'global' && <Text style={[styles.rkThCell, { flex: 1, paddingLeft: 8 }]} numberOfLines={1}>プレイヤー</Text>}
-                <Text style={[styles.rkThCell, { width: 58 }]}>LV</Text>
-                <Text style={[styles.rkThCell, { width: 52, textAlign: 'center' }]}>日付</Text>
+                <Text style={[styles.rkThCell, { width: 36 }]}>{t('ranking_pos')}</Text>
+                <Text style={[styles.rkThCell, { width: 80 }]}>{t('ranking_score')}</Text>
+                {rankTab === 'global' && <Text style={[styles.rkThCell, { flex: 1, paddingLeft: 8 }]} numberOfLines={1}>{t('ranking_player')}</Text>}
+                <Text style={[styles.rkThCell, { width: 58 }]}>{t('ranking_lv')}</Text>
+                <Text style={[styles.rkThCell, { width: 52, textAlign: 'center' }]}>{t('ranking_date')}</Text>
               </View>
 
               {rankTab === 'local' ? (
                 rankings.length === 0 ? (
-                  <Text style={styles.rkEmpty}>まだ記録がありません</Text>
+                  <Text style={styles.rkEmpty}>{t('ranking_empty')}</Text>
                 ) : (
                   rankings.map((entry, i) => (
                     <View key={i} style={[styles.rkTd, i % 2 === 1 && styles.rkTdEven]}>
@@ -1979,9 +1977,9 @@ export default function GameScreen() {
                   ))
                 )
               ) : loadingGlobal ? (
-                <Text style={styles.rkEmpty}>読み込み中...</Text>
+                <Text style={styles.rkEmpty}>{t('loading')}</Text>
               ) : globalRankings.length === 0 ? (
-                <Text style={styles.rkEmpty}>まだ記録がありません</Text>
+                <Text style={styles.rkEmpty}>{t('ranking_empty')}</Text>
               ) : (
                 globalRankings.map((entry, i) => (
                   <View key={i} style={[styles.rkTd, i % 2 === 1 && styles.rkTdEven]}>
@@ -2003,10 +2001,10 @@ export default function GameScreen() {
             {/* Footer */}
             <View style={styles.rkFooter}>
               {rankTab === 'global' && !settings.playerName && (
-                <Text style={styles.rkWarning}>設定でプレイヤー名を登録すると参加できます</Text>
+                <Text style={styles.rkWarning}>{t('ranking_name_required')}</Text>
               )}
               <TouchableOpacity style={styles.rkCloseBtn} onPress={() => { setRankingVisible(false); setGlobalRankings([]); }}>
-                <Text style={styles.rkCloseBtnText}>閉じる</Text>
+                <Text style={styles.rkCloseBtnText}>{t('close')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2082,7 +2080,7 @@ export default function GameScreen() {
             >
               ⚡
             </Animated.Text>
-            <Text style={styles.unlockName}>{unlockOverlay.name} 解放！</Text>
+            <Text style={styles.unlockName}>{tf('char_unlock_msg', unlockOverlay.name)}</Text>
           </View>
         </Animated.View>
       )}
@@ -2130,10 +2128,10 @@ function PopupBar({
       ) : isMode ? (
         <>
           <Text style={s.modeText}>
-            {eraserMode ? '🔴 DEL: 消したいセルをタップ' : henkouMode ? '🟡 CHG: 変換する恐竜をタップ' : '🔴 ALL: 全消去する恐竜をタップ'}
+            {eraserMode ? t('mode_del') : henkouMode ? t('mode_chg') : t('mode_all')}
           </Text>
           <TouchableOpacity onPress={onCancelMode}>
-            <Text style={s.modeCancelText}>キャンセル</Text>
+            <Text style={s.modeCancelText}>{t('cancel')}</Text>
           </TouchableOpacity>
         </>
       ) : (

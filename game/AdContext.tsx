@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as React from 'react';
 import { Alert, AppState, Platform } from 'react-native';
+import { t, tf } from './i18n';
 
 import {
   initPurchases,
@@ -131,12 +132,12 @@ export function AdProvider({ children }: { children: React.ReactNode }) {
       const result = await purchasePremium();
       if (result.success) {
         await setAdRemoved(true);
-        Alert.alert('購入完了', 'Premiumが有効になりました！\n広告OFF＋ゲームオーバー復活特典が使えます');
+        Alert.alert(t('purchase_success_title'), t('purchase_success_msg'));
       } else if (result.reason !== 'cancelled') {
-        Alert.alert('購入できませんでした', result.reason);
+        Alert.alert(t('purchase_fail_title'), result.reason);
       }
     } catch (e: any) {
-      Alert.alert('エラー', `購入処理中にエラーが発生しました: ${e?.message || e}`);
+      Alert.alert(t('purchase_error_title'), tf('purchase_error_msg', e?.message || e));
     }
   }, [setAdRemoved]);
 
@@ -145,9 +146,9 @@ export function AdProvider({ children }: { children: React.ReactNode }) {
     const success = await restorePurchases();
     if (success) {
       await setAdRemoved(true);
-      Alert.alert('復元完了', 'Premiumが復元されました！');
+      Alert.alert(t('restore_success_title'), t('restore_success_msg'));
     } else {
-      Alert.alert('復元結果', '復元可能な購入が見つかりませんでした。');
+      Alert.alert(t('restore_fail_title'), t('restore_fail_msg'));
     }
   }, [setAdRemoved]);
 

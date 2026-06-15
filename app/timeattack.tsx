@@ -21,9 +21,10 @@ import {
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import {
-  DINO_EMOJI, DINO_NAMES, DINO_UNLOCK_LV,
+  DINO_EMOJI, DINO_UNLOCK_LV,
   groupsNeeded, bombBoardMax,
 } from '../game/constants';
+import { t, tf, dinoName, setLanguage } from '../game/i18n';
 import { DINO_SOURCES } from '../game/images';
 import { TAGameBoard } from '../game/TAGameBoard';
 import { calcScore, checkLevelUp, minGroupSize } from '../game/logic';
@@ -56,17 +57,17 @@ const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?
 const VERTICAL_OVERHEAD = STATUS_BAR_HEIGHT + 240;
 
 const VOLUME_OPTIONS = [
-  { label: '消', value: 0 },
-  { label: '小', value: 0.1 },
-  { label: '中', value: 0.3 },
-  { label: '大', value: 0.5 },
+  { labelKey: 'vol_mute', value: 0 },
+  { labelKey: 'vol_low', value: 0.1 },
+  { labelKey: 'vol_mid', value: 0.3 },
+  { labelKey: 'vol_high', value: 0.5 },
 ];
 
-const NUM_SIZE_OPTIONS: { label: string; key: Settings['numberSize']; size: number }[] = [
-  { label: '小', key: 'sm', size: 0.75 },
-  { label: '中', key: 'md', size: 0.95 },
-  { label: '大', key: 'lg', size: 1.2 },
-  { label: '特大', key: 'xl', size: 1.5 },
+const NUM_SIZE_OPTIONS: { labelKey: string; key: Settings['numberSize']; size: number }[] = [
+  { labelKey: 'numsize_sm', key: 'sm', size: 0.75 },
+  { labelKey: 'numsize_md', key: 'md', size: 0.95 },
+  { labelKey: 'numsize_lg', key: 'lg', size: 1.2 },
+  { labelKey: 'numsize_xl', key: 'xl', size: 1.5 },
 ];
 
 export default function TimeAttackScreen() {
@@ -163,7 +164,7 @@ export default function TimeAttackScreen() {
 
   const [settings, setSettings] = React.useState<Settings>({
     soundVolume: 0.3, bgmOn: true, hapticsOn: true, dropAnimation: true,
-    bombWaveEffect: true, unlockAnimationOn: true, numberSize: 'lg', playerName: '',
+    bombWaveEffect: true, unlockAnimationOn: true, numberSize: 'lg', playerName: '', language: 'ja',
   });
   const settingsRef = React.useRef(settings);
   const [bgmIndex, setBgmIndex] = React.useState(0);
@@ -193,6 +194,7 @@ export default function TimeAttackScreen() {
       setSettings(savedSettings);
       setNameInput(savedSettings.playerName);
       setSoundVolume(savedSettings.soundVolume);
+      if (savedSettings.language) setLanguage(savedSettings.language);
       loadSoundEffects().then(() => setSoundVolume(savedSettings.soundVolume));
 
       const initial = createTimeAttackState();
@@ -295,7 +297,7 @@ export default function TimeAttackScreen() {
   const bombMaxUnlockLabel = (oldLevel: number, newLevel: number) => {
     const oldMax = bombBoardMax(oldLevel);
     const newMax = bombBoardMax(newLevel);
-    return newMax > oldMax ? ` 火山上限+${newMax - oldMax}` : '';
+    return newMax > oldMax ? ` ${tf('volcano_max', newMax - oldMax)}` : '';
   };
 
   const deferredPopupRef = React.useRef<{ text: string; duration: number } | null>(null);
@@ -328,7 +330,7 @@ export default function TimeAttackScreen() {
   if (!gameState) {
     return (
       <ImageBackground source={BG_IMAGE} style={styles.screen} contentFit="cover">
-        <Text style={styles.loadingText}>読み込み中...</Text>
+        <Text style={styles.loadingText}>{t('loading')}</Text>
       </ImageBackground>
     );
   }
@@ -603,7 +605,7 @@ export default function TimeAttackScreen() {
       if (result.earnedAll) items.push('ALL×1');
       const oldBombMax = bombBoardMax(state.level);
       const newBombMax = bombBoardMax(result.newLevel);
-      if (newBombMax > oldBombMax) items.push(`火山上限+${newBombMax - oldBombMax}`);
+      if (newBombMax > oldBombMax) items.push(tf('volcano_max', newBombMax - oldBombMax));
       if (items.length > 0) msg += ` ${items.join(' ')}`;
       deferPopup(msg, 250);
     }
@@ -672,7 +674,7 @@ export default function TimeAttackScreen() {
     await saveToTARanking(state.score, state.level);
     const r = await loadTARankings();
     setTaRankings(r);
-    showPopup(timeRef.current <= 0 ? 'TIME UP!' : 'GAME OVER', 3000);
+    showPopup(timeRef.current <= 0 ? t('time_up') : t('game_over'), 3000);
 
     if (settings.playerName) {
       await submitTAGlobalScore(settings.playerName, state.score, state.level);
@@ -707,9 +709,9 @@ export default function TimeAttackScreen() {
 
   const handleRetire = () => {
     setMenuVisible(false);
-    Alert.alert('リタイア', '本当にリタイアしますか？', [
-      { text: 'キャンセル', style: 'cancel' },
-      { text: 'リタイア', style: 'destructive', onPress: () => handleGameOver(gameState) },
+    Alert.alert(t('retire'), t('retire_confirm'), [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('retire'), style: 'destructive', onPress: () => handleGameOver(gameState) },
     ]);
   };
 
@@ -726,7 +728,7 @@ export default function TimeAttackScreen() {
       checkAfterErase(ns);
       return ns;
     });
-    showPopup(`シャッフル！ -${TA_ITEM_PENALTY.shuffle}pts`);
+    showPopup(tf('shuffle_penalty', TA_ITEM_PENALTY.shuffle));
   };
 
   const handleEraser = () => {
@@ -761,7 +763,7 @@ export default function TimeAttackScreen() {
           settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           if (hintTimer.current) clearTimeout(hintTimer.current);
           hintTimer.current = setTimeout(() => setHighlightCells(new Set()), 5000);
-          showPopup('🌋 ボルケーノをタップ！', 2000);
+          showPopup(t('hint_volcano'), 2000);
           return;
         }
         if (grid[r][c].type < 0) continue;
@@ -771,13 +773,13 @@ export default function TimeAttackScreen() {
           settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           if (hintTimer.current) clearTimeout(hintTimer.current);
           hintTimer.current = setTimeout(() => setHighlightCells(new Set()), 5000);
-          showPopup(`${DINO_NAMES[grid[r][c].type]}を${group.length}個消せる！`, 2000);
+          showPopup(tf('hint_erase', dinoName(grid[r][c].type), group.length), 2000);
           return;
         }
       }
     }
     if (eraserCount > 0 || shuffleCount > 0 || henkouCount > 0 || allCount > 0) {
-      showPopup('アイテムを使おう！', 2000);
+      showPopup(t('hint_use_item'), 2000);
     }
   };
 
@@ -795,7 +797,7 @@ export default function TimeAttackScreen() {
       return ns;
     });
     settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    showPopup('DEL×10 → CHG×1 交換完了！', 200);
+    showPopup(t('exchange_chg_done'), 200);
   };
 
   const confirmExchangeALL = () => {
@@ -807,13 +809,13 @@ export default function TimeAttackScreen() {
       return ns;
     });
     settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    showPopup('DEL×15 → ALL×1 交換完了！', 200);
+    showPopup(t('exchange_all_done'), 200);
   };
 
   const handleExit = () => {
-    Alert.alert('終了', 'タイムアタックを終了しますか？\n（スコアは保存されません）', [
-      { text: 'キャンセル', style: 'cancel' },
-      { text: '終了する', onPress: async () => {
+    Alert.alert(t('exit'), t('exit_ta'), [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('exit_ta_confirm'), onPress: async () => {
         if (timerIdRef.current) { clearInterval(timerIdRef.current); timerIdRef.current = null; }
         await stopBGM();
         router.back();
@@ -903,11 +905,11 @@ export default function TimeAttackScreen() {
           {/* TA Mode badge + combo */}
           <View style={styles.taBadgeRow}>
             <View style={styles.taBadge}>
-              <Text style={styles.taBadgeText}>⏱ タイムアタック ×{TA_SCORE_MULTIPLIER}</Text>
+              <Text style={styles.taBadgeText}>{tf('ta_score_multiplier', TA_SCORE_MULTIPLIER)}</Text>
             </View>
             {comboDisplay > 0 && (
               <View style={styles.comboBadge}>
-                <Text style={styles.comboBadgeText}>🔥 COMBO ×{TA_COMBO_MULTIPLIERS[comboDisplay]}</Text>
+                <Text style={styles.comboBadgeText}>{tf('ta_combo', TA_COMBO_MULTIPLIERS[comboDisplay])}</Text>
               </View>
             )}
           </View>
@@ -932,12 +934,12 @@ export default function TimeAttackScreen() {
                 onPress={waitingStart ? handleStart : handleResume}
               >
                 <Text style={styles.boardOverlayEmoji}>{waitingStart ? '⏱' : '⏸'}</Text>
-                <Text style={styles.boardOverlayTitle}>{waitingStart ? 'タイムアタック' : '一時停止中'}</Text>
+                <Text style={styles.boardOverlayTitle}>{waitingStart ? t('ta_start_title') : t('ta_pause_title')}</Text>
                 <Text style={styles.boardOverlayDesc}>
-                  {waitingStart ? `${TA_DURATION}秒 × スコア${TA_SCORE_MULTIPLIER}倍 + コンボ` : 'タップで再開'}
+                  {waitingStart ? tf('ta_start_desc', TA_DURATION, TA_SCORE_MULTIPLIER) : t('ta_pause_desc')}
                 </Text>
                 <View style={styles.boardOverlayBtn}>
-                  <Text style={styles.boardOverlayBtnText}>{waitingStart ? 'スタート' : '再開'}</Text>
+                  <Text style={styles.boardOverlayBtnText}>{waitingStart ? t('ta_start_btn') : t('ta_resume')}</Text>
                 </View>
               </TouchableOpacity>
             ) : (
@@ -963,7 +965,7 @@ export default function TimeAttackScreen() {
         {/* Footer: dino panel */}
         <View style={[styles.footerPanel, { marginHorizontal: horizontalPadding }]}>
           <View style={styles.footerLabelRow}>
-            <Text style={styles.footerLabel}>登場キャラクター</Text>
+            <Text style={styles.footerLabel}>{t('char_footer')}</Text>
           </View>
           <FlatList
             ref={footerListRef}
@@ -1023,15 +1025,25 @@ export default function TimeAttackScreen() {
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
           <View style={styles.menuPanel}>
             <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setSettingsVisible(true); }}>
-              <Text style={styles.menuItemText}>⚙ 設定</Text>
+              <Text style={styles.menuItemText}>{t('menu_settings')}</Text>
             </TouchableOpacity>
+            {!waitingStart && (<>
+              <View style={styles.menuDivider} />
+              <TouchableOpacity style={styles.menuItem} onPress={handleRetire}>
+                <Text style={[styles.menuItemText, styles.menuItemDanger]}>{t('menu_retire')}</Text>
+              </TouchableOpacity>
+            </>)}
             <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuItem} onPress={handleRetire}>
-              <Text style={[styles.menuItemText, styles.menuItemDanger]}>🚪 リタイア</Text>
-            </TouchableOpacity>
-            <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); handleExit(); }}>
-              <Text style={styles.menuItemText}>🏠 タイトルに戻る</Text>
+            <TouchableOpacity style={styles.menuItem} onPress={async () => {
+              setMenuVisible(false);
+              if (waitingStart) {
+                await stopBGM();
+                router.back();
+              } else {
+                handleExit();
+              }
+            }}>
+              <Text style={styles.menuItemText}>{t('menu_home')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1041,15 +1053,15 @@ export default function TimeAttackScreen() {
       {gameOverVisible && <Modal visible={gameOverVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.taGameOverLabel}>⏱ タイムアタック</Text>
-            <Text style={styles.modalTitle}>{timeRemaining <= 0 ? 'TIME UP!' : 'GAME OVER'}</Text>
-            <Text style={styles.modalScore}>スコア: {formatScore(score)}</Text>
-            <Text style={styles.modalLevel}>レベル: {level}（開始 LV30）</Text>
+            <Text style={styles.taGameOverLabel}>{t('ta_label')}</Text>
+            <Text style={styles.modalTitle}>{timeRemaining <= 0 ? t('time_up') : t('game_over')}</Text>
+            <Text style={styles.modalScore}>{tf('score_display', formatScore(score))}</Text>
+            <Text style={styles.modalLevel}>{tf('level_display_ta', level)}</Text>
 
             {/* TA Ranking inline */}
             {taRankings.length > 0 && (
               <View style={styles.taRankInline}>
-                <Text style={styles.taRankInlineTitle}>🏆 ベストスコア</Text>
+                <Text style={styles.taRankInlineTitle}>{t('ta_best')}</Text>
                 {taRankings.slice(0, 5).map((entry, i) => (
                   <View key={i} style={styles.taRankRow}>
                     <Text style={styles.taRankPos}>{rankLabel(i)}</Text>
@@ -1062,7 +1074,7 @@ export default function TimeAttackScreen() {
             )}
 
             <TouchableOpacity style={styles.modalBtn} onPress={handleRestart}>
-              <Text style={styles.modalBtnText}>もう一度プレイ</Text>
+              <Text style={styles.modalBtnText}>{t('play_again')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.modalBtn, styles.modalBtnSecondary]} onPress={async () => {
               setGameOverVisible(false);
@@ -1071,7 +1083,7 @@ export default function TimeAttackScreen() {
               await stopBGM();
               router.back();
             }}>
-              <Text style={styles.modalBtnTextSecondary}>タイトルに戻る</Text>
+              <Text style={styles.modalBtnTextSecondary}>{t('back_to_title')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1081,27 +1093,27 @@ export default function TimeAttackScreen() {
       {exchangeVisible && <Modal visible={exchangeVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>アイテム交換</Text>
+            <Text style={styles.modalTitle}>{t('exchange_title')}</Text>
             <Text style={{ fontSize: 13, color: '#6b7280', textAlign: 'center' }}>DEL ×{eraserCount}</Text>
             <TouchableOpacity
               style={[styles.modalBtn, { opacity: eraserCount >= 10 ? 1 : 0.4 }]}
               onPress={confirmExchangeCHG}
               disabled={eraserCount < 10}
             >
-              <Text style={styles.modalBtnText}>DEL×10 → CHG×1</Text>
+              <Text style={styles.modalBtnText}>{t('exchange_del_chg')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modalBtn, { backgroundColor: '#dc2626', opacity: eraserCount >= 15 ? 1 : 0.4 }]}
               onPress={confirmExchangeALL}
               disabled={eraserCount < 15}
             >
-              <Text style={styles.modalBtnText}>DEL×15 → ALL×1</Text>
+              <Text style={styles.modalBtnText}>{t('exchange_del_all')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modalBtn, { backgroundColor: '#e5e7eb' }]}
               onPress={() => setExchangeVisible(false)}
             >
-              <Text style={[styles.modalBtnText, { color: '#374151' }]}>キャンセル</Text>
+              <Text style={[styles.modalBtnText, { color: '#374151' }]}>{t('cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1112,12 +1124,12 @@ export default function TimeAttackScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Image source={DINO_SOURCES[dinoInfoPopup]} style={{ width: 140, height: 140 }} contentFit="contain" />
-            <Text style={{ fontSize: 20, fontWeight: '900', color: '#111827' }}>{DINO_NAMES[dinoInfoPopup]} {DINO_EMOJI[dinoInfoPopup]}</Text>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: '#111827' }}>{dinoName(dinoInfoPopup)} {DINO_EMOJI[dinoInfoPopup]}</Text>
             <Text style={{ fontSize: 14, color: '#6b7280', fontWeight: '700' }}>
-              数字: {dinoInfoPopup + 1}（{dinoInfoPopup + 1}個つながると消せる）
+              {tf('char_desc', dinoInfoPopup + 1)}
             </Text>
             <TouchableOpacity style={styles.modalBtn} onPress={() => setDinoInfoPopup(null)}>
-              <Text style={styles.modalBtnText}>閉じる</Text>
+              <Text style={styles.modalBtnText}>{t('close')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1128,9 +1140,9 @@ export default function TimeAttackScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={{ fontSize: 32 }}>⏱</Text>
-            <Text style={styles.modalTitle}>プレイヤー名を登録</Text>
+            <Text style={styles.modalTitle}>{t('name_prompt_title')}</Text>
             <Text style={{ fontSize: 13, color: '#6b7280', textAlign: 'center' }}>
-              グローバルランキングに参加できます
+              {t('name_prompt_subtitle')}
             </Text>
             <TextInput
               style={{
@@ -1142,24 +1154,24 @@ export default function TimeAttackScreen() {
               }}
               value={gameOverNameInput}
               onChangeText={setGameOverNameInput}
-              placeholder="名前を入力（最大12文字）"
+              placeholder={t('name_placeholder')}
               placeholderTextColor="#9ca3af"
               maxLength={12}
               autoFocus
             />
-            <Text style={{ fontSize: 11, color: '#9ca3af' }}>※通常モードと共通です</Text>
+            <Text style={{ fontSize: 11, color: '#9ca3af' }}>{t('name_shared_hint')}</Text>
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 8, width: '100%' }}>
               <TouchableOpacity
                 style={[styles.modalBtn, { flex: 1, backgroundColor: '#e5e7eb' }]}
                 onPress={() => submitNameAndScore('')}
               >
-                <Text style={[styles.modalBtnText, { color: '#374151' }]}>スキップ</Text>
+                <Text style={[styles.modalBtnText, { color: '#374151' }]}>{t('skip')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, { flex: 1 }]}
                 onPress={() => submitNameAndScore(gameOverNameInput.trim())}
               >
-                <Text style={styles.modalBtnText}>決定！</Text>
+                <Text style={styles.modalBtnText}>{t('decide')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1171,7 +1183,7 @@ export default function TimeAttackScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.rkDialog}>
             <View style={styles.rkHeader}>
-              <Text style={styles.rkHeaderText}>🏆 タイムアタック ランキング</Text>
+              <Text style={styles.rkHeaderText}>{t('ranking_ta_title')}</Text>
               <TouchableOpacity style={styles.rkCloseX} onPress={() => { setRankingVisible(false); setGlobalRankings([]); }}>
                 <Text style={styles.rkCloseXText}>✕</Text>
               </TouchableOpacity>
@@ -1183,7 +1195,7 @@ export default function TimeAttackScreen() {
                 style={[styles.rkTabBtn, rankTab === 'local' && styles.rkTabActive]}
                 onPress={() => setRankTab('local')}
               >
-                <Text style={[styles.rkTabText, rankTab === 'local' && styles.rkTabTextActive]}>📱 端末</Text>
+                <Text style={[styles.rkTabText, rankTab === 'local' && styles.rkTabTextActive]}>{t('ranking_local')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.rkTabBtn, rankTab === 'global' && styles.rkTabActive]}
@@ -1195,7 +1207,7 @@ export default function TimeAttackScreen() {
                   setLoadingGlobal(false);
                 }}
               >
-                <Text style={[styles.rkTabText, rankTab === 'global' && styles.rkTabTextActive]}>🌍 グローバル</Text>
+                <Text style={[styles.rkTabText, rankTab === 'global' && styles.rkTabTextActive]}>{t('ranking_global')}</Text>
               </TouchableOpacity>
             </View>
 
@@ -1215,7 +1227,7 @@ export default function TimeAttackScreen() {
                     }}
                   >
                     <Text style={[styles.rkPeriodText, rankPeriod === p && styles.rkPeriodTextActive]}>
-                      {p === 'daily' ? 'デイリー' : p === 'weekly' ? '週間' : '月間'}
+                      {p === 'daily' ? t('ranking_daily') : p === 'weekly' ? t('ranking_weekly') : t('ranking_monthly')}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -1225,16 +1237,16 @@ export default function TimeAttackScreen() {
             {/* Table */}
             <ScrollView style={styles.rkBody}>
               <View style={styles.rkTh}>
-                <Text style={[styles.rkThCell, { width: 36 }]}>順位</Text>
-                <Text style={[styles.rkThCell, { width: 80 }]}>スコア</Text>
-                {rankTab === 'global' && <Text style={[styles.rkThCell, { flex: 1, paddingLeft: 8 }]} numberOfLines={1}>プレイヤー</Text>}
+                <Text style={[styles.rkThCell, { width: 36 }]}>{t('ranking_pos')}</Text>
+                <Text style={[styles.rkThCell, { width: 80 }]}>{t('ranking_score')}</Text>
+                {rankTab === 'global' && <Text style={[styles.rkThCell, { flex: 1, paddingLeft: 8 }]} numberOfLines={1}>{t('ranking_player')}</Text>}
                 <Text style={[styles.rkThCell, { width: 58 }]}>LV</Text>
-                <Text style={[styles.rkThCell, { width: 52, textAlign: 'center' }]}>日付</Text>
+                <Text style={[styles.rkThCell, { width: 52, textAlign: 'center' }]}>{t('ranking_date')}</Text>
               </View>
 
               {rankTab === 'local' ? (
                 taRankings.length === 0 ? (
-                  <Text style={styles.rkEmpty}>まだ記録がありません</Text>
+                  <Text style={styles.rkEmpty}>{t('ranking_empty')}</Text>
                 ) : (
                   taRankings.map((entry, i) => (
                     <View key={i} style={[styles.rkTd, i % 2 === 1 && styles.rkTdEven]}>
@@ -1246,9 +1258,9 @@ export default function TimeAttackScreen() {
                   ))
                 )
               ) : loadingGlobal ? (
-                <Text style={styles.rkEmpty}>読み込み中...</Text>
+                <Text style={styles.rkEmpty}>{t('loading')}</Text>
               ) : globalRankings.length === 0 ? (
-                <Text style={styles.rkEmpty}>まだ記録がありません</Text>
+                <Text style={styles.rkEmpty}>{t('ranking_empty')}</Text>
               ) : (
                 globalRankings.map((entry, i) => (
                   <View key={i} style={[styles.rkTd, i % 2 === 1 && styles.rkTdEven]}>
@@ -1264,10 +1276,10 @@ export default function TimeAttackScreen() {
 
             <View style={styles.rkFooter}>
               {rankTab === 'global' && !settings.playerName && (
-                <Text style={styles.rkWarning}>設定でプレイヤー名を登録すると参加できます</Text>
+                <Text style={styles.rkWarning}>{t('ranking_name_required')}</Text>
               )}
               <TouchableOpacity style={styles.rkCloseBtn} onPress={() => { setRankingVisible(false); setGlobalRankings([]); }}>
-                <Text style={styles.rkCloseBtnText}>閉じる</Text>
+                <Text style={styles.rkCloseBtnText}>{t('close')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1280,17 +1292,17 @@ export default function TimeAttackScreen() {
           <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20 }}>
             <View style={styles.stCard}>
               <View style={styles.stHeader}>
-                <Text style={styles.stHeaderText}>⚙ 設定</Text>
+                <Text style={styles.stHeaderText}>{t('settings_title')}</Text>
               </View>
 
               <View style={styles.stSection}>
-                <Text style={styles.stLabel}>🏷 プレイヤー名</Text>
+                <Text style={styles.stLabel}>{t('settings_player_name')}</Text>
                 <View style={styles.stNameRow}>
                   <TextInput
                     style={styles.stNameInput}
                     value={nameInput}
                     onChangeText={setNameInput}
-                    placeholder="名前を入力"
+                    placeholder={t('settings_name_placeholder')}
                     maxLength={12}
                   />
                   <TouchableOpacity
@@ -1300,15 +1312,15 @@ export default function TimeAttackScreen() {
                       settings.hapticsOn && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     }}
                   >
-                    <Text style={styles.stSaveBtnText}>保存</Text>
+                    <Text style={styles.stSaveBtnText}>{t('save')}</Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.stHint}>現在: {settings.playerName || '未設定'}</Text>
+                <Text style={styles.stHint}>{tf('settings_name_current', settings.playerName || t('settings_name_none'))}</Text>
               </View>
               <View style={styles.stDivider} />
 
               <View style={styles.stSection}>
-                <Text style={styles.stLabel}>🔊 効果音</Text>
+                <Text style={styles.stLabel}>{t('settings_sound')}</Text>
                 <View style={styles.stBtnRow}>
                   {VOLUME_OPTIONS.map(opt => (
                     <TouchableOpacity
@@ -1317,7 +1329,7 @@ export default function TimeAttackScreen() {
                       onPress={() => updateSettings({ soundVolume: opt.value })}
                     >
                       <Text style={[styles.stBtnText, settings.soundVolume === opt.value && styles.stBtnTextActive]}>
-                        {opt.label}
+                        {t(opt.labelKey)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -1326,7 +1338,7 @@ export default function TimeAttackScreen() {
               <View style={styles.stDivider} />
 
               <View style={styles.stSection}>
-                <Text style={styles.stLabel}>🔢 数値サイズ</Text>
+                <Text style={styles.stLabel}>{t('settings_numsize')}</Text>
                 <View style={styles.stBtnRow}>
                   {NUM_SIZE_OPTIONS.map(opt => (
                     <TouchableOpacity
@@ -1335,7 +1347,7 @@ export default function TimeAttackScreen() {
                       onPress={() => updateSettings({ numberSize: opt.key })}
                     >
                       <Text style={[styles.stBtnText, settings.numberSize === opt.key && styles.stBtnTextActive]}>
-                        {opt.label}
+                        {t(opt.labelKey)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -1345,7 +1357,7 @@ export default function TimeAttackScreen() {
 
               <View style={styles.stSection}>
                 <View style={styles.stRow}>
-                  <Text style={styles.stLabel}>🎵 BGM</Text>
+                  <Text style={styles.stLabel}>{t('settings_bgm')}</Text>
                   <TouchableOpacity
                     style={[styles.stToggle, settings.bgmOn ? styles.stToggleOn : styles.stToggleOff]}
                     onPress={async () => {
@@ -1356,7 +1368,7 @@ export default function TimeAttackScreen() {
                     }}
                   >
                     <Text style={[styles.stToggleText, settings.bgmOn && styles.stToggleTextOn]}>
-                      {settings.bgmOn ? 'ON' : 'OFF'}
+                      {settings.bgmOn ? t('on') : t('off')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1378,20 +1390,41 @@ export default function TimeAttackScreen() {
 
               <View style={styles.stSection}>
                 <View style={styles.stRow}>
-                  <Text style={styles.stLabel}>📳 振動</Text>
+                  <Text style={styles.stLabel}>{t('settings_haptics')}</Text>
                   <TouchableOpacity
                     style={[styles.stToggle, settings.hapticsOn ? styles.stToggleOn : styles.stToggleOff]}
                     onPress={() => updateSettings({ hapticsOn: !settings.hapticsOn })}
                   >
                     <Text style={[styles.stToggleText, settings.hapticsOn && styles.stToggleTextOn]}>
-                      {settings.hapticsOn ? 'ON' : 'OFF'}
+                      {settings.hapticsOn ? t('on') : t('off')}
                     </Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
+              <View style={styles.stDivider} />
+              <View style={styles.stSection}>
+                <Text style={styles.stLabel}>{t('settings_language')}</Text>
+                <View style={styles.stBtnRow}>
+                  {(['ja', 'en'] as const).map(lang => (
+                    <TouchableOpacity
+                      key={lang}
+                      style={[styles.stBtn, settings.language === lang && styles.stBtnActive]}
+                      onPress={() => {
+                        updateSettings({ language: lang });
+                        setLanguage(lang);
+                      }}
+                    >
+                      <Text style={[styles.stBtnText, settings.language === lang && styles.stBtnTextActive]}>
+                        {lang === 'ja' ? t('lang_ja') : t('lang_en')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
               <TouchableOpacity style={styles.stCloseBtn} onPress={() => setSettingsVisible(false)}>
-                <Text style={styles.stCloseBtnText}>閉じる</Text>
+                <Text style={styles.stCloseBtnText}>{t('close')}</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -1416,7 +1449,7 @@ export default function TimeAttackScreen() {
             <Animated.Text style={[styles.unlockBolt, {
               transform: [{ scale: unlockBoltAnim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1.2] }) }],
             }]}>⚡</Animated.Text>
-            <Text style={styles.unlockName}>{unlockOverlay.name} 解放！</Text>
+            <Text style={styles.unlockName}>{tf('char_unlock_msg', unlockOverlay.name)}</Text>
           </View>
         </Animated.View>
       )}
@@ -1444,10 +1477,10 @@ function PopupBar({
       ) : isMode ? (
         <>
           <Text style={styles.modeText}>
-            {eraserMode ? '🔴 DEL: 消したいセルをタップ' : henkouMode ? '🟡 CHG: 変換する恐竜をタップ' : '🔴 ALL: 全消去する恐竜をタップ'}
+            {eraserMode ? t('mode_del') : henkouMode ? t('mode_chg') : t('mode_all')}
           </Text>
           <TouchableOpacity onPress={onCancelMode}>
-            <Text style={styles.modeCancelText}>キャンセル</Text>
+            <Text style={styles.modeCancelText}>{t('cancel')}</Text>
           </TouchableOpacity>
         </>
       ) : (
