@@ -13,6 +13,7 @@ export default function RootLayout() {
         <View style={{ flex: 1 }}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="tutorial" options={{ animation: 'fade' }} />
             <Stack.Screen name="game" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="timeattack" options={{ animation: 'slide_from_right' }} />
           </Stack>

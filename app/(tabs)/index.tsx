@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { type Href, useRouter } from 'expo-router';
 import * as React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { isTutorialDone } from '../tutorial';
 
 const DINO_SOURCES = [
   require('../../assets/images/dino-0.png'),
@@ -17,6 +18,12 @@ export default function HomeScreen() {
   const [dinoIdx] = React.useState(() => Math.floor(Math.random() * DINO_SOURCES.length));
   const { width } = useWindowDimensions();
   const cardMaxWidth = Math.min(500, width - 32);
+
+  React.useEffect(() => {
+    isTutorialDone().then((done) => {
+      if (!done) router.replace('/tutorial' as Href);
+    });
+  }, []);
 
   return (
     <View style={styles.screen}>
