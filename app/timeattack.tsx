@@ -49,6 +49,7 @@ import {
 } from '../game/timeattack-config';
 import { loadTARankings, saveToTARanking, type TARankEntry } from '../game/timeattack-storage';
 import { fetchTAGlobalRankings, submitTAGlobalScore, type TAGlobalRankEntry, type RankPeriod } from '../game/timeattack-firebase';
+import { preloadInterstitialAd, showInterstitialAd, incrementTAGameCount, shouldShowOnTARestart } from '../game/InterstitialAdManager';
 
 const BG_IMAGE = require('../assets/images/bg.png');
 const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 36) : 44;
@@ -178,6 +179,7 @@ export default function TimeAttackScreen() {
       const initial = createTimeAttackState();
       setGameState(initial);
       // タイマーはスタートボタン押下まで開始しない
+      preloadInterstitialAd();
     })();
     const unsub = onBgmChange(() => setBgmIndex(getCurrentBGMIndex()));
     return () => {
@@ -647,6 +649,7 @@ export default function TimeAttackScreen() {
     playGameOver();
     await stopBGM();
     updateState({ running: false });
+    incrementTAGameCount();
     await saveToTARanking(state.score, state.level);
     const r = await loadTARankings();
     setTaRankings(r);
@@ -677,6 +680,9 @@ export default function TimeAttackScreen() {
 
   const handleRestart = async () => {
     setGameOverVisible(false);
+    if (shouldShowOnTARestart()) {
+      await showInterstitialAd(adState.isPremium);
+    }
     resetForNewGame();
   };
 
@@ -1038,6 +1044,7 @@ export default function TimeAttackScreen() {
             <TouchableOpacity style={[styles.modalBtn, styles.modalBtnSecondary]} onPress={async () => {
               setGameOverVisible(false);
               if (timerIdRef.current) { clearInterval(timerIdRef.current); timerIdRef.current = null; }
+              await showInterstitialAd(adState.isPremium);
               await stopBGM();
               router.back();
             }}>

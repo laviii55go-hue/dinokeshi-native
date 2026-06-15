@@ -41,6 +41,7 @@ import {
 import { BGM_NAMES, getCurrentBGMIndex, loadSoundEffects, onBgmChange, playBomb, playBonus, playBonusBig, playErase, playEraser, playGameOver, playHenkou, playShuffle, playTick, setSoundVolume, startBGM, stopBGM, switchBGM } from '../game/sound';
 import { clearGameState, getMaxReachedLevel, loadGameState, loadRankings, loadSettings, saveGameState, saveSettings, saveToRanking, setMaxReachedLevel, type Settings } from '../game/storage';
 import { preloadRewardedAd, isRewardedAdReady, showRewardedAd } from '../game/RewardedAdManager';
+import { preloadInterstitialAd, showInterstitialAd } from '../game/InterstitialAdManager';
 import type { Cell, GameState } from '../game/types';
 
 import { fetchGlobalRankings, submitGlobalScore, type GlobalRankEntry, type RankPeriod } from '../game/firebase';
@@ -191,8 +192,9 @@ export default function GameScreen() {
         try { await startBGM(); } catch {}
       }
 
-      // リワード広告プリロード
+      // 広告プリロード
       preloadRewardedAd();
+      preloadInterstitialAd();
     })();
     const unsub = onBgmChange(() => setBgmIndex(getCurrentBGMIndex()));
     return () => {
@@ -1331,6 +1333,7 @@ export default function GameScreen() {
               hasUsedReviveRef.current = false;
               preGameOverStateRef.current = null;
               resetForNewGame(selectedStartLevel);
+              await showInterstitialAd(adState.isPremium);
               await stopBGM();
               router.back();
             }}>
