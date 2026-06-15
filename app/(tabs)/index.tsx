@@ -38,10 +38,18 @@ export default function HomeScreen() {
           activeOpacity={0.85}
           style={[styles.primaryButton, styles.shadow]}
           onPress={() => router.push('/game' as Href)}>
-          <Text style={styles.primaryButtonText}>🦕 ゲームスタート</Text>
+          <Text style={styles.primaryButtonText}>🦕 通常モード</Text>
         </TouchableOpacity>
 
-        <Text style={styles.version}>v5.5.1</Text>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={[styles.taButton, styles.taShadow]}
+          onPress={() => router.push('/timeattack' as Href)}>
+          <Text style={styles.taButtonText}>⏱ タイムアタック</Text>
+          <Text style={styles.taButtonSub}>90秒スピード勝負！ スコア5倍＋コンボ</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.version}>v5.6.0</Text>
       </View>
     </View>
   );
@@ -114,6 +122,33 @@ const styles = StyleSheet.create({
   },
   shadow: {
     shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  taButton: {
+    backgroundColor: '#dc2626',
+    borderRadius: 26,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  taButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  taButtonSub: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  taShadow: {
+    shadowColor: '#dc2626',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
     shadowRadius: 12,

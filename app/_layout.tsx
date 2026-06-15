@@ -14,6 +14,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="game" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="timeattack" options={{ animation: 'slide_from_right' }} />
           </Stack>
         </View>
         <GlobalBanner />
