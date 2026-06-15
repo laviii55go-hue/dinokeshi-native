@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { t } from '../game/i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TUTORIAL_DONE_KEY = 'dinoKeshiTutorialDone';
@@ -31,43 +32,15 @@ interface TutorialPage {
   emoji: string;
 }
 
-const PAGES: TutorialPage[] = [
-  {
-    title: 'ようこそ！',
-    body: '恐竜けしは、同じ種類の恐竜を\nつなげて消すパズルゲームです。\n\nたくさん消してハイスコアを目指そう！',
-    dinoIndices: [0, 1, 2],
-    accent: '#f59e0b',
-    emoji: '🦕',
-  },
-  {
-    title: 'あそびかた',
-    body: '恐竜にはそれぞれ数字があります。\nその数字の数だけ同じ恐竜を\nつなげると消せます！\n\n数字が大きい恐竜ほど消しにくいけど\n高得点！',
-    dinoIndices: [0, 3, 5],
-    accent: '#10b981',
-    emoji: '👆',
-  },
-  {
-    title: 'アイテムを使おう',
-    body: 'レベルアップでアイテムがもらえます。\n\nDEL … 1匹だけ消す\nMIX … 盤面シャッフル\nCHG … 種類を変える\nALL … 同じ種類を全部消す\n\n困ったときに使ってみよう！',
-    dinoIndices: [4, 5, 0],
-    accent: '#6366f1',
-    emoji: '🎁',
-  },
-  {
-    title: 'タイムアタック！',
-    body: '90秒のスピード勝負モード！\n\nスコア5倍＋コンボでさらに倍率UP。\n素早く消して最高スコアを狙おう！\n\n世界ランキングにも挑戦できるよ！',
-    dinoIndices: [1, 2, 4],
-    accent: '#dc2626',
-    emoji: '⏱',
-  },
-  {
-    title: 'さあ、はじめよう！',
-    body: '通常モードでじっくり遊ぶもよし、\nタイムアタックで熱くなるもよし。\n\nきみだけの恐竜パズルを楽しもう！',
-    dinoIndices: [0, 3, 5],
-    accent: '#f59e0b',
-    emoji: '🎮',
-  },
-];
+function getPages(): TutorialPage[] {
+  return [
+    { title: t('tut_welcome'), body: t('tut_welcome_body'), dinoIndices: [0, 1, 2], accent: '#f59e0b', emoji: '🦕' },
+    { title: t('tut_howto'), body: t('tut_howto_body'), dinoIndices: [0, 3, 5], accent: '#10b981', emoji: '👆' },
+    { title: t('tut_items'), body: t('tut_items_body'), dinoIndices: [4, 5, 0], accent: '#6366f1', emoji: '🎁' },
+    { title: t('tut_ta'), body: t('tut_ta_body'), dinoIndices: [1, 2, 4], accent: '#dc2626', emoji: '⏱' },
+    { title: t('tut_start'), body: t('tut_start_body'), dinoIndices: [0, 3, 5], accent: '#f59e0b', emoji: '🎮' },
+  ];
+}
 
 export async function isTutorialDone(): Promise<boolean> {
   try {
@@ -88,6 +61,7 @@ export default function TutorialScreen() {
   const router = useRouter();
   const flatListRef = React.useRef<FlatList>(null);
   const [currentPage, setCurrentPage] = React.useState(0);
+  const pages = React.useMemo(() => getPages(), []);
 
   const finish = async () => {
     await markTutorialDone();
@@ -95,7 +69,7 @@ export default function TutorialScreen() {
   };
 
   const goNext = () => {
-    if (currentPage < PAGES.length - 1) {
+    if (currentPage < pages.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentPage + 1, animated: true });
     } else {
       finish();
@@ -124,7 +98,7 @@ export default function TutorialScreen() {
 
       <View style={styles.footer}>
         <View style={styles.dots}>
-          {PAGES.map((_, i) => (
+          {pages.map((_, i) => (
             <View
               key={i}
               style={[
@@ -141,13 +115,13 @@ export default function TutorialScreen() {
           activeOpacity={0.85}
         >
           <Text style={styles.nextBtnText}>
-            {index === PAGES.length - 1 ? 'はじめる！' : 'つぎへ'}
+            {index === pages.length - 1 ? t('tut_begin') : t('tut_next')}
           </Text>
         </TouchableOpacity>
 
-        {index < PAGES.length - 1 && (
+        {index < pages.length - 1 && (
           <TouchableOpacity onPress={finish} style={styles.skipBtn}>
-            <Text style={styles.skipText}>スキップ</Text>
+            <Text style={styles.skipText}>{t('skip')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -158,7 +132,7 @@ export default function TutorialScreen() {
     <View style={styles.screen}>
       <FlatList
         ref={flatListRef}
-        data={PAGES}
+        data={pages}
         renderItem={renderPage}
         keyExtractor={(_, i) => String(i)}
         horizontal

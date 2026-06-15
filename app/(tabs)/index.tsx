@@ -3,6 +3,7 @@ import { type Href, useRouter } from 'expo-router';
 import * as React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { isTutorialDone } from '../tutorial';
+import { t } from '../../game/i18n';
 
 const DINO_SOURCES = [
   require('../../assets/images/dino-0.png'),
@@ -29,7 +30,7 @@ export default function HomeScreen() {
     <View style={styles.screen}>
       <View style={[styles.card, { maxWidth: cardMaxWidth }]}>
         <View style={styles.titleRow}>
-          <Text style={styles.title}>🦕 恐竜けし</Text>
+          <Text style={styles.title}>{t('app_title')}</Text>
         </View>
 
         <View style={styles.hero}>
@@ -38,28 +39,28 @@ export default function HomeScreen() {
             style={styles.heroImage}
             contentFit="contain"
           />
-          <Text style={styles.subtitle}>つながると消せる、やみつき恐竜パズル</Text>
+          <Text style={styles.subtitle}>{t('app_subtitle')}</Text>
         </View>
 
         <TouchableOpacity
           activeOpacity={0.85}
           style={[styles.primaryButton, styles.shadow]}
           onPress={() => router.push('/game' as Href)}>
-          <Text style={styles.primaryButtonText}>🦕 通常モード</Text>
+          <Text style={styles.primaryButtonText}>{t('mode_normal')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           activeOpacity={0.85}
           style={[styles.taButton, styles.taShadow]}
           onPress={() => router.push('/timeattack' as Href)}>
-          <Text style={styles.taButtonText}>⏱ タイムアタック</Text>
-          <Text style={styles.taButtonSub}>90秒スピード勝負！ スコア5倍＋コンボ</Text>
+          <Text style={styles.taButtonText}>{t('mode_ta')}</Text>
+          <Text style={styles.taButtonSub}>{t('mode_ta_sub')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.helpButton}
           onPress={() => router.push('/tutorial' as Href)}>
-          <Text style={styles.helpButtonText}>❓ 遊び方</Text>
+          <Text style={styles.helpButtonText}>{t('how_to_play')}</Text>
         </TouchableOpacity>
 
         <Text style={styles.version}>v5.6.0</Text>

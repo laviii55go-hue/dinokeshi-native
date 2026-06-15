@@ -105,6 +105,8 @@ export async function saveToRanking(score: number, level: number): Promise<numbe
 
 // --- Settings ---
 
+export type Language = 'ja' | 'en';
+
 export interface Settings {
   soundVolume: number;  // 0, 0.1, 0.3, 0.5
   bgmOn: boolean;
@@ -114,6 +116,7 @@ export interface Settings {
   unlockAnimationOn: boolean;
   numberSize: 'sm' | 'md' | 'lg' | 'xl';
   playerName: string;
+  language: Language;
 }
 
 const defaultSettings: Settings = {
@@ -125,6 +128,7 @@ const defaultSettings: Settings = {
   unlockAnimationOn: true,
   numberSize: 'md',
   playerName: '',
+  language: 'ja',
 };
 
 export async function loadSettings(): Promise<Settings> {
