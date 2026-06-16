@@ -716,7 +716,7 @@ export default function TimeAttackScreen() {
   };
 
   const handleShuffle = () => {
-    if (shuffleCount <= 0 || animatingRef.current) return;
+    if (waitingStart || paused || shuffleCount <= 0 || animatingRef.current) return;
     settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     playShuffle();
     setGameState(prev => {
@@ -732,7 +732,7 @@ export default function TimeAttackScreen() {
   };
 
   const handleEraser = () => {
-    if (eraserCount <= 0 || animatingRef.current) return;
+    if (waitingStart || paused || eraserCount <= 0 || animatingRef.current) return;
     setHenkouMode(false);
     setAllMode(false);
     setEraserMode(!eraserMode);
@@ -740,7 +740,7 @@ export default function TimeAttackScreen() {
   };
 
   const handleHenkou = () => {
-    if (henkouCount <= 0 || animatingRef.current) return;
+    if (waitingStart || paused || henkouCount <= 0 || animatingRef.current) return;
     setEraserMode(false);
     setAllMode(false);
     setHenkouMode(!henkouMode);
@@ -748,7 +748,7 @@ export default function TimeAttackScreen() {
   };
 
   const handleAll = () => {
-    if (allCount <= 0 || animatingRef.current) return;
+    if (waitingStart || paused || allCount <= 0 || animatingRef.current) return;
     setEraserMode(false);
     setHenkouMode(false);
     setAllMode(!allMode);
@@ -756,6 +756,7 @@ export default function TimeAttackScreen() {
   };
 
   const handleHint = () => {
+    if (waitingStart || paused) return;
     for (let r = 0; r < TA_ROWS; r++) {
       for (let c = 0; c < TA_COLS; c++) {
         if (grid[r][c].bomb) {
