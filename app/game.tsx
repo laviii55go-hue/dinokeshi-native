@@ -1344,7 +1344,6 @@ export default function GameScreen() {
               hasUsedReviveRef.current = false;
               preGameOverStateRef.current = null;
               resetForNewGame(selectedStartLevel);
-              await showInterstitialAd(adState.isPremium);
               await stopBGM();
               router.back();
             }}>

@@ -861,9 +861,6 @@ export default function TimeAttackScreen() {
               <Text style={styles.scoreLabel}>SCORE</Text>
               <Text style={styles.scoreValue}>{formatScore(score)}</Text>
             </View>
-            <TouchableOpacity style={[styles.actionBtn, styles.hintBtn]} onPress={handleHint}>
-              <Text style={styles.actionBtnText}>HINT</Text>
-            </TouchableOpacity>
           </View>
 
           {/* Row 2: Items */}
@@ -1080,7 +1077,6 @@ export default function TimeAttackScreen() {
             <TouchableOpacity style={[styles.modalBtn, styles.modalBtnSecondary]} onPress={async () => {
               setGameOverVisible(false);
               if (timerIdRef.current) { clearInterval(timerIdRef.current); timerIdRef.current = null; }
-              await showInterstitialAd(adState.isPremium);
               await stopBGM();
               router.back();
             }}>
@@ -1544,7 +1540,7 @@ const styles = StyleSheet.create({
   timerValue: { fontSize: 30, fontWeight: '900', lineHeight: 34 },
   statusScore: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   scoreLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1, color: 'rgba(0,0,0,0.55)', lineHeight: 12 },
-  scoreValue: { fontSize: 30, fontWeight: '900', letterSpacing: 1, color: '#111827', lineHeight: 34 },
+  scoreValue: { fontSize: 22, fontWeight: '900', letterSpacing: 0.5, color: '#111827', lineHeight: 26 },
 
   // TA badge + combo
   taBadgeRow: {
