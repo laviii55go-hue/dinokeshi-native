@@ -78,7 +78,7 @@ export default function HomeScreen() {
           <Text style={styles.helpButtonText}>{t('how_to_play')}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.version}>v5.6.0</Text>
+        <Text style={styles.version}>v5.6.1</Text>
       </View>
     </View>
   );

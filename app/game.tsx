@@ -1544,7 +1544,7 @@ export default function GameScreen() {
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>{t('rules_changelog_title')}</Text>
                 <Text style={styles.rulesText}>
-                  <Text style={styles.rulesBold}>v5.6.0</Text>{'（2026/06/15）\n'}
+                  <Text style={styles.rulesBold}>v5.6.1</Text>{'（2026/06/18）\n'}
                   {t('changelog_v560')}
                   {'\n\n'}
                   <Text style={styles.rulesBold}>v5.5.1</Text>{'（2026/05/15）\n'}
