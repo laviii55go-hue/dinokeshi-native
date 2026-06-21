@@ -64,8 +64,10 @@ const ja: Record<string, string> = {
   // Items
   shuffle: 'シャッフル！',
   exchange_title: 'アイテム交換',
+  exchange_del_mix: 'DEL×5 → MIX×1',
   exchange_del_chg: 'DEL×10 → CHG×1',
   exchange_del_all: 'DEL×15 → ALL×1',
+  exchange_mix_done: 'DEL×5 → MIX×1 交換完了！',
   exchange_chg_done: 'DEL×10 → CHG×1 交換完了！',
   exchange_all_done: 'DEL×15 → ALL×1 交換完了！',
 
@@ -86,7 +88,7 @@ const ja: Record<string, string> = {
   char_unlock_lv: 'LV{0}で解放',
   char_unlock_msg: '{0} 解放！',
   char_all_unlocked: '🎉 全キャラ解放！',
-  char_next_unlock: '次の出現まで あと {0}Lv',
+  char_next_unlock: '次のLVは {0}',
   volcano_max: '火山上限+{0}',
 
   // Time Attack
@@ -202,7 +204,7 @@ const ja: Record<string, string> = {
   rules_s2_title: '② スコアのしくみ',
   rules_s2_body1: 'スコアは **消えた枚数 × 表示の数値** で加算されます。',
   rules_s2_body2: 'グループが大きいほど、また表示数値が大きい恐竜ほど**高得点**！',
-  rules_s2_rare: '✨ **レアボーナス**\nスピノサウルス以上の恐竜を消すとレアボーナス加算！\n難しい恐竜ほど高ボーナス\n\n📈 **レベル係数**：LV3からスコアUP\nLV3:1.1倍 → LV10:1.35倍 → LV30:1.7倍 → LV50+:2.0倍〜',
+  rules_s2_rare: '✨ **レアボーナス**\nスピノサウルス以上の恐竜を消すとレアボーナス加算！\n難しい恐竜ほど高ボーナス\n\n📈 **レベル係数**：最初からスコアUP！\nLV1:×2 → LV10:×4 → LV50:×10 → LV100+:×20〜',
   rules_s2_tip: '💡 ティラノサウルス（表示1）は1個から消せるので詰まったときの救済にも！',
   rules_s3_title: '③ 噴火 🌋',
   rules_s3_body1: '🌋をタップすると、その噴火がある**縦一列＋横一列**を一気に消します。',
@@ -213,17 +215,17 @@ const ja: Record<string, string> = {
   rules_th_unlock_lv: '解放LV',
   rules_th_button: 'ボタン',
   rules_th_effect: '効果',
-  rules_item_del: '好きな1マスを消去。LVアップごとに+1',
+  rules_item_del: '好きな1マスを消去。LV2から毎LVアップごとに+1',
   rules_item_mix: 'グリッド全体をシャッフル',
   rules_item_chg: '1種類を基本6種のどれかに全変換',
   rules_item_all: '1種類の恐竜を盤面から全消去',
-  rules_s4_tip: '💡 DEL・MIX・CHG・ALLが残っているとゲームオーバーを回避！\nボタンが光ったら使いどき！\n🔁 DEL×10 → CHG×1、DEL×15 → ALL×1 に交換可能！',
+  rules_s4_tip: '💡 DEL・MIX・CHG・ALLが残っているとゲームオーバーを回避！\nボタンが光ったら使いどき！\n🔁 DEL×5 → MIX×1、DEL×10 → CHG×1、DEL×15 → ALL×1 に交換可能！',
   rules_s5_title: '⑤ 新キャラクターの出現',
   rules_s5_body: 'レベルが上がると、より強力な新キャラクターが出現します。',
   rules_th_needed: '必要数',
   rules_n_pcs: '{0}個',
   rules_mystery: '??? 何が出るかはお楽しみ！',
-  rules_s5_tip: '⚠️ 新種は連結数が多くて消しにくい分、高得点チャンス！\n🎁 大グループで消すと固定ボーナス加算！\n✨ ヘッダーに「次の出現まで あと N Lv」を常時表示！\n⚡ 新キャラ解放時はカットイン演出！（設定で ON/OFF 切替可）',
+  rules_s5_tip: '⚠️ 新種は連結数が多くて消しにくい分、高得点チャンス！\n🎁 大グループで消すと固定ボーナス加算！\n✨ ヘッダーに「次のLVは N」を常時表示！\n⚡ 新キャラ解放時はカットイン演出！（設定で ON/OFF 切替可）\n📐 LV10・50・100でフィールド拡大！',
   rules_changelog_title: '📋 更新履歴',
   changelog_v560: '・タイムアタックモード追加（6×8盤面・90秒・スコア5倍＋コンボ）\n・インタースティシャル広告追加\n・チュートリアル画面追加\n・多言語（英語）対応',
   changelog_v551: '・上部ヘッダーの画面崩れを修正（小型 iPhone 対応・端末幅連動マージン）\n・進捗ドットを 1本の進捗バーに変更（コンパクト化）\n・交換ボタンのテキストを短縮',
@@ -312,8 +314,10 @@ const en: Record<string, string> = {
   // Items
   shuffle: 'Shuffle!',
   exchange_title: 'Item Exchange',
+  exchange_del_mix: 'DEL×5 → MIX×1',
   exchange_del_chg: 'DEL×10 → CHG×1',
   exchange_del_all: 'DEL×15 → ALL×1',
+  exchange_mix_done: 'DEL×5 → MIX×1 Exchanged!',
   exchange_chg_done: 'DEL×10 → CHG×1 Exchanged!',
   exchange_all_done: 'DEL×15 → ALL×1 Exchanged!',
 
@@ -334,7 +338,7 @@ const en: Record<string, string> = {
   char_unlock_lv: 'Unlocked at LV{0}',
   char_unlock_msg: '{0} Unlocked!',
   char_all_unlocked: '🎉 All Characters Unlocked!',
-  char_next_unlock: 'Next unlock in {0} Lv',
+  char_next_unlock: 'Next LV {0}',
   volcano_max: 'Volcano cap +{0}',
 
   // Time Attack
@@ -450,7 +454,7 @@ const en: Record<string, string> = {
   rules_s2_title: '② Scoring',
   rules_s2_body1: 'Score is calculated by **tiles erased × display number**.',
   rules_s2_body2: 'Bigger groups and higher-number dinos mean **more points**!',
-  rules_s2_rare: '✨ **Rare Bonus**\nErase Spinosaurus or higher for a rare bonus!\nHarder dinos give bigger bonuses\n\n📈 **Level Multiplier**: Score UP from LV3\nLV3: ×1.1 → LV10: ×1.35 → LV30: ×1.7 → LV50+: ×2.0+',
+  rules_s2_rare: '✨ **Rare Bonus**\nErase Spinosaurus or higher for a rare bonus!\nHarder dinos give bigger bonuses\n\n📈 **Level Multiplier**: Score UP from the start!\nLV1: ×2 → LV10: ×4 → LV50: ×10 → LV100+: ×20+',
   rules_s2_tip: '💡 Tyrannosaurus (number 1) can be erased alone — great for getting unstuck!',
   rules_s3_title: '③ Volcano 🌋',
   rules_s3_body1: 'Tap 🌋 to erase the entire **row + column** at once.',
@@ -461,17 +465,17 @@ const en: Record<string, string> = {
   rules_th_unlock_lv: 'Unlock LV',
   rules_th_button: 'Button',
   rules_th_effect: 'Effect',
-  rules_item_del: 'Erase any 1 cell. +1 per level up',
+  rules_item_del: 'Erase any 1 cell. +1 per level up from LV2',
   rules_item_mix: 'Shuffle the entire grid',
   rules_item_chg: 'Convert one type to a random basic type',
   rules_item_all: 'Erase all of one dino type from the board',
-  rules_s4_tip: '💡 Having DEL/MIX/CHG/ALL prevents Game Over!\nUse them when buttons flash!\n🔁 Exchange: DEL×10 → CHG×1, DEL×15 → ALL×1',
+  rules_s4_tip: '💡 Having DEL/MIX/CHG/ALL prevents Game Over!\nUse them when buttons flash!\n🔁 Exchange: DEL×5 → MIX×1, DEL×10 → CHG×1, DEL×15 → ALL×1',
   rules_s5_title: '⑤ New Characters',
   rules_s5_body: 'As you level up, more powerful new characters appear.',
   rules_th_needed: 'Required',
   rules_n_pcs: '{0}',
   rules_mystery: '??? Find out for yourself!',
-  rules_s5_tip: '⚠️ New species are harder to erase but worth more points!\n🎁 Big groups give fixed bonus scores!\n✨ Header shows "Next unlock in N Lv"!\n⚡ Cut-in animation on new character unlock! (toggle in Settings)',
+  rules_s5_tip: '⚠️ New species are harder to erase but worth more points!\n🎁 Big groups give fixed bonus scores!\n✨ Header shows "Next LV N"!\n⚡ Cut-in animation on new character unlock! (toggle in Settings)\n📐 Field expands at LV10, 50, and 100!',
   rules_changelog_title: '📋 Update History',
   changelog_v560: '・Added Time Attack mode (6×8 board, 90s, Score ×5 + Combo)\n・Added interstitial ads\n・Added tutorial screen\n・Added English language support',
   changelog_v551: '・Fixed header layout for small iPhones\n・Changed progress dots to progress bar\n・Shortened exchange button text',
@@ -508,7 +512,7 @@ const DINO_NAMES_JA = [
   'アンキロサウルス', 'マイアサウラ', 'ケツァルコアトル',
   'マンモス', 'ヒト', 'ロボット', 'AI', 'エイリアン',
   'ドラゴン', 'ヤマタノオロチ', 'ユニコーン',
-  'フェニックス', '麒麟', '神', '世界樹',
+  'フェニックス', '麒麟', '時空', '世界樹',
   '海', '大地', '空', '星', '虚無', '∞',
 ];
 
@@ -519,7 +523,7 @@ const DINO_NAMES_EN = [
   'Ankylosaurus', 'Maiasaura', 'Quetzalcoatlus',
   'Mammoth', 'Human', 'Robot', 'AI', 'Alien',
   'Dragon', 'Yamata no Orochi', 'Unicorn',
-  'Phoenix', 'Qilin', 'God', 'World Tree',
+  'Phoenix', 'Qilin', 'Spacetime', 'World Tree',
   'Ocean', 'Earth', 'Sky', 'Star', 'Void', '∞',
 ];
 
@@ -530,7 +534,7 @@ const DINO_NAMES_SHORT_JA = [
   'アンキロ', 'マイアサウラ', 'ケツァル',
   'マンモス', 'ヒト', 'ロボット', 'AI', 'エイリアン',
   'ドラゴン', 'オロチ', 'ユニコーン',
-  'フェニックス', '麒麟', '神', '世界樹',
+  'フェニックス', '麒麟', '時空', '世界樹',
   '海', '大地', '空', '星', '虚無', '∞',
 ];
 
@@ -541,7 +545,7 @@ const DINO_NAMES_SHORT_EN = [
   'Ankylo', 'Maiasaura', 'Quetzal',
   'Mammoth', 'Human', 'Robot', 'AI', 'Alien',
   'Dragon', 'Orochi', 'Unicorn',
-  'Phoenix', 'Qilin', 'God', 'World Tree',
+  'Phoenix', 'Qilin', 'Spacetime', 'World Tree',
   'Ocean', 'Earth', 'Sky', 'Star', 'Void', '∞',
 ];
 

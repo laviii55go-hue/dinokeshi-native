@@ -1,6 +1,20 @@
 export const COLS = 8;
 export const ROWS = 10;
 
+export function getBoardCols(level: number): number {
+  if (level < 10) return 5;
+  if (level < 50) return 6;
+  if (level < 100) return 7;
+  return 8;
+}
+
+export function getBoardRows(level: number): number {
+  if (level < 10) return 7;
+  if (level < 50) return 8;
+  if (level < 100) return 9;
+  return 10;
+}
+
 export const DINO_NAMES = [
   'ティラノサウルス',
   'ブラキオサウルス',
@@ -24,7 +38,7 @@ export const DINO_NAMES = [
   'ユニコーン',
   'フェニックス',
   '麒麟',
-  '神',
+  '時空',
   '世界樹',
   '海',
   '大地',
@@ -40,19 +54,19 @@ export const DINO_EMOJI = [
   '🪽', '🦣',
   '🧑', '🤖', '🧠', '👽', '🐉', '🐍',
   '🦄', '🔥', '🦁',
-  '✨',
+  '⏳',
   '🌳', '🌊', '⛰️', '☁️', '⭐',
   '🌌', '♾️',
 ];
 
 export const DINO_UNLOCK_LV = [
-  0, 0, 0, 0, 0, 0,
-  5, 10, 15, 20, 25,
+  0, 0, 0, 0, 0, 3,
+  5, 11, 15, 20, 25,
   30,
   35, 40, 45,
-  50,
+  51,
   70,
-  80, 100,
+  80, 101,
   110, 120, 130,
   150,
   180,
@@ -94,12 +108,12 @@ export function bombBoardMax(level: number): number {
 }
 
 export const START_LEVEL_PRESETS = {
-  10: { score: 800, eraserCount: 4, shuffleCount: 1, henkouCount: 0, allCount: 0 },
-  30: { score: 2500, eraserCount: 9, shuffleCount: 4, henkouCount: 1, allCount: 0 },
-  50: { score: 5000, eraserCount: 15, shuffleCount: 7, henkouCount: 1, allCount: 1 },
-  70: { score: 7500, eraserCount: 22, shuffleCount: 11, henkouCount: 2, allCount: 1 },
-  90: { score: 10500, eraserCount: 28, shuffleCount: 14, henkouCount: 2, allCount: 2 },
-  100: { score: 12500, eraserCount: 31, shuffleCount: 16, henkouCount: 3, allCount: 2 },
+  10: { score: 1600, eraserCount: 4, shuffleCount: 1, henkouCount: 0, allCount: 0 },
+  30: { score: 8500, eraserCount: 9, shuffleCount: 4, henkouCount: 1, allCount: 0 },
+  50: { score: 25000, eraserCount: 15, shuffleCount: 7, henkouCount: 1, allCount: 1 },
+  70: { score: 60000, eraserCount: 22, shuffleCount: 11, henkouCount: 2, allCount: 1 },
+  90: { score: 130000, eraserCount: 28, shuffleCount: 14, henkouCount: 2, allCount: 2 },
+  100: { score: 200000, eraserCount: 31, shuffleCount: 16, henkouCount: 3, allCount: 2 },
 } as const;
 
 export type StartLevelPreset = keyof typeof START_LEVEL_PRESETS;
@@ -130,9 +144,9 @@ export function availableDinoTypes(level: number): WeightedType[] {
     { type: 2, weight: starW },
     { type: 3, weight: easyW },
     { type: 4, weight: baseW },
-    { type: 5, weight: baseW },
   ];
 
+  if (level >= DINO_UNLOCK_LV[5]) result.push({ type: 5, weight: baseW });
   if (level >= DINO_UNLOCK_LV[6]) result.push({ type: 6, weight: midW });
   if (level >= DINO_UNLOCK_LV[7]) result.push({ type: 7, weight: midW });
   if (level >= DINO_UNLOCK_LV[8]) result.push({ type: 8, weight: midW });

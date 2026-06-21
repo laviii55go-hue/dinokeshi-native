@@ -201,6 +201,9 @@ export default function TimeAttackScreen() {
       setGameState(initial);
       // タイマーはスタートボタン押下まで開始しない
       preloadInterstitialAd();
+
+      const savedRankings = await loadTARankings();
+      setTaRankings(savedRankings);
     })();
     const unsub = onBgmChange(() => setBgmIndex(getCurrentBGMIndex()));
     return () => {

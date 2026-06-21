@@ -22,7 +22,7 @@ export const DINO_SOURCES = [
   require('../assets/images/dino-19.png'),   // ユニコーン
   require('../assets/images/dino-20.png'),   // フェニックス
   require('../assets/images/dino-21.png'),   // 麒麟
-  require('../assets/images/dino-22.png'),   // 神
+  require('../assets/images/dino-22-jiku.png'),   // 時空
   require('../assets/images/dino-23.png'),   // 世界樹
   require('../assets/images/dino-24.png'),   // 海
   require('../assets/images/dino-25.png'),   // 大地

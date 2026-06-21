@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { View } from 'react-native';
 
-import { COLS, ROWS } from './constants';
 import { AnimatedCell } from './AnimatedCell';
 import type { Cell } from './types';
 
@@ -19,7 +18,6 @@ interface Props {
   onCellPress: (r: number, c: number) => void;
 }
 
-// Pre-compute cell press handlers and margin styles to avoid re-creation
 export const GameBoard = React.memo(function GameBoard({
   grid,
   cellSize,
@@ -33,37 +31,38 @@ export const GameBoard = React.memo(function GameBoard({
   isSelectMode,
   onCellPress,
 }: Props) {
-  // Memoize margin styles - only recompute when cellGap changes
+  const rows = grid.length;
+  const cols = grid[0]?.length ?? 0;
+
   const marginStyles = React.useMemo(() => {
     if (cellGap === 0) return null;
     const styles: (object | undefined)[] = [];
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
         styles.push({
-          marginRight: c === COLS - 1 ? 0 : cellGap,
-          marginBottom: r === ROWS - 1 ? 0 : cellGap,
+          marginRight: c === cols - 1 ? 0 : cellGap,
+          marginBottom: r === rows - 1 ? 0 : cellGap,
         });
       }
     }
     return styles;
-  }, [cellGap]);
+  }, [cellGap, rows, cols]);
 
-  // Memoize press handlers - stable references per cell position
   const pressHandlers = React.useMemo(() => {
     const handlers: (() => void)[] = [];
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
         handlers.push(() => onCellPress(r, c));
       }
     }
     return handlers;
-  }, [onCellPress]);
+  }, [onCellPress, rows, cols]);
 
   return (
     <>
       {grid.map((row, r) =>
         row.map((cell, c) => {
-          const key = r * COLS + c;
+          const key = r * cols + c;
           return (
             <View key={key} style={marginStyles?.[key]}>
               <AnimatedCell

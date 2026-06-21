@@ -1,4 +1,4 @@
-import { COLS, ROWS, START_LEVEL_PRESETS, availableDinoTypes, bombBoardMax, bombProbability, groupsNeeded, type StartLevelPreset, type WeightedType } from './constants';
+import { getBoardCols, getBoardRows, START_LEVEL_PRESETS, availableDinoTypes, bombBoardMax, bombProbability, groupsNeeded, type StartLevelPreset, type WeightedType } from './constants';
 import type { Cell, GameState } from './types';
 
 let cellGenCounter = 0;
@@ -7,8 +7,10 @@ let cellGenCounter = 0;
 
 function countBombs(grid: Cell[][]): number {
   let n = 0;
-  for (let r = 0; r < ROWS; r++)
-    for (let c = 0; c < COLS; c++)
+  const rows = grid.length;
+  const cols = grid[0].length;
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
       if (grid[r][c].bomb) n++;
   return n;
 }
@@ -31,13 +33,15 @@ function randomCell(wTypes: WeightedType[], allowBomb: boolean, bombProb: number
 }
 
 export function createGrid(level: number, maxInitBombs = 1): Cell[][] {
+  const rows = getBoardRows(level);
+  const cols = getBoardCols(level);
   const types = availableDinoTypes(level);
   const prob = bombProbability(level);
   const grid: Cell[][] = [];
   let bombs = 0;
-  for (let r = 0; r < ROWS; r++) {
+  for (let r = 0; r < rows; r++) {
     const row: Cell[] = [];
-    for (let c = 0; c < COLS; c++) {
+    for (let c = 0; c < cols; c++) {
       const canBomb = bombs < maxInitBombs;
       const cell = randomCell(types, canBomb, prob);
       if (cell.bomb) bombs++;
@@ -46,6 +50,30 @@ export function createGrid(level: number, maxInitBombs = 1): Cell[][] {
     grid.push(row);
   }
   return grid;
+}
+
+export function resizeGridKeepingCenter(grid: Cell[][], level: number): Cell[][] {
+  const newBombLimit = Math.max(0, bombBoardMax(level) - countBombs(grid));
+  const newGrid = createGrid(level, newBombLimit);
+  const oldRows = grid.length;
+  const oldCols = grid[0]?.length ?? 0;
+  const newRows = newGrid.length;
+  const newCols = newGrid[0]?.length ?? 0;
+
+  const copyRows = Math.min(oldRows, newRows);
+  const copyCols = Math.min(oldCols, newCols);
+  const oldRowStart = Math.max(0, Math.floor((oldRows - newRows) / 2));
+  const oldColStart = Math.max(0, Math.floor((oldCols - newCols) / 2));
+  const newRowStart = Math.max(0, Math.floor((newRows - oldRows) / 2));
+  const newColStart = Math.max(0, Math.floor((newCols - oldCols) / 2));
+
+  for (let r = 0; r < copyRows; r++) {
+    for (let c = 0; c < copyCols; c++) {
+      newGrid[newRowStart + r][newColStart + c] = { ...grid[oldRowStart + r][oldColStart + c] };
+    }
+  }
+
+  return newGrid;
 }
 
 // ★ デバッグ用: 任意のレベルでゲーム開始（検証完了後に DEBUG_START_LEVEL = 0 に戻す）
@@ -81,6 +109,8 @@ export function createInitialState(startLevel: number = 1): GameState {
 export function getGroup(grid: Cell[][], sr: number, sc: number): [number, number][] {
   const cell = grid[sr][sc];
   if (cell.bomb) return [];
+  const rows = grid.length;
+  const cols = grid[0].length;
   const target = cell.type;
   const seen = new Set<number>();
   const queue: [number, number][] = [[sr, sc]];
@@ -88,9 +118,9 @@ export function getGroup(grid: Cell[][], sr: number, sc: number): [number, numbe
 
   while (queue.length > 0) {
     const [r, c] = queue.shift()!;
-    const key = r * COLS + c;
+    const key = r * cols + c;
     if (seen.has(key)) continue;
-    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+    if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
     const g = grid[r][c];
     if (g.bomb || g.type !== target) continue;
     seen.add(key);
@@ -109,11 +139,13 @@ export function minGroupSize(cellType: number): number {
 // --- Bomb explosion ---
 
 export interface BombResult {
-  destroyed: Set<number>;   // keys = r*COLS+c
+  destroyed: Set<number>;   // keys = r*cols+c
   chainBombs: [number, number][];
 }
 
 export function explodeBomb(grid: Cell[][], br: number, bc: number): BombResult {
+  const rows = grid.length;
+  const cols = grid[0].length;
   const destroyed = new Set<number>();
   const chainBombs: [number, number][] = [[br, bc]];
   const visited = new Set<number>();
@@ -121,23 +153,23 @@ export function explodeBomb(grid: Cell[][], br: number, bc: number): BombResult 
 
   while (queue.length > 0) {
     const [r, c] = queue.shift()!;
-    const key = r * COLS + c;
+    const key = r * cols + c;
     if (visited.has(key)) continue;
     visited.add(key);
 
     // destroy entire row and column
-    for (let cc = 0; cc < COLS; cc++) destroyed.add(r * COLS + cc);
-    for (let rr = 0; rr < ROWS; rr++) destroyed.add(rr * COLS + c);
+    for (let cc = 0; cc < cols; cc++) destroyed.add(r * cols + cc);
+    for (let rr = 0; rr < rows; rr++) destroyed.add(rr * cols + c);
 
     // check for chain bombs in row and column
-    for (let cc = 0; cc < COLS; cc++) {
-      if (grid[r][cc].bomb && !visited.has(r * COLS + cc)) {
+    for (let cc = 0; cc < cols; cc++) {
+      if (grid[r][cc].bomb && !visited.has(r * cols + cc)) {
         queue.push([r, cc]);
         chainBombs.push([r, cc]);
       }
     }
-    for (let rr = 0; rr < ROWS; rr++) {
-      if (grid[rr][c].bomb && !visited.has(rr * COLS + c)) {
+    for (let rr = 0; rr < rows; rr++) {
+      if (grid[rr][c].bomb && !visited.has(rr * cols + c)) {
         queue.push([rr, c]);
         chainBombs.push([rr, c]);
       }
@@ -150,27 +182,29 @@ export function explodeBomb(grid: Cell[][], br: number, bc: number): BombResult 
 // --- Gravity & refill ---
 
 export function applyGravityAndRefill(grid: Cell[][], level: number): Cell[][] {
+  const rows = grid.length;
+  const cols = grid[0].length;
   const types = availableDinoTypes(level);
   const prob = bombProbability(level);
-  const newGrid: Cell[][] = Array.from({ length: ROWS }, () =>
-    Array.from({ length: COLS }, () => ({ type: -1, bomb: false }))
+  const newGrid: Cell[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => ({ type: -1, bomb: false }))
   );
 
   // Pass 1: Count existing bombs first so they are never replaced by new ones
   let existingBombs = 0;
-  for (let r = 0; r < ROWS; r++)
-    for (let c = 0; c < COLS; c++)
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
       if (grid[r][c].type >= 0 && grid[r][c].bomb) existingBombs++;
 
   // Pass 2: Place existing cells (bombs always kept), then fill new cells
   let bombCount = existingBombs;
 
-  for (let c = 0; c < COLS; c++) {
+  for (let c = 0; c < cols; c++) {
     const existing: Cell[] = [];
-    for (let r = ROWS - 1; r >= 0; r--) {
+    for (let r = rows - 1; r >= 0; r--) {
       if (grid[r][c].type >= 0) existing.push(grid[r][c]);
     }
-    let writeRow = ROWS - 1;
+    let writeRow = rows - 1;
     for (const cell of existing) {
       newGrid[writeRow][c] = { type: cell.type, bomb: cell.bomb, gen: cell.gen };
       writeRow--;
@@ -197,11 +231,11 @@ export function eraseCells(grid: Cell[][], positions: [number, number][]): Cell[
 }
 
 export function eraseBombCells(grid: Cell[][], destroyed: Set<number>): Cell[][] {
-  // Shallow copy rows, only deep-copy affected cells (same as eraseCells)
+  const cols = grid[0].length;
   const newGrid = grid.map(row => [...row]);
   for (const key of destroyed) {
-    const r = (key / COLS) | 0;
-    const c = key % COLS;
+    const r = (key / cols) | 0;
+    const c = key % cols;
     newGrid[r][c] = { type: -1, bomb: false };
   }
   return newGrid;
@@ -210,19 +244,21 @@ export function eraseBombCells(grid: Cell[][], destroyed: Set<number>): Cell[][]
 // --- Check valid moves ---
 
 export function hasValidMoves(grid: Cell[][]): boolean {
+  const rows = grid.length;
+  const cols = grid[0].length;
   // bombs are always clickable
-  for (let r = 0; r < ROWS; r++)
-    for (let c = 0; c < COLS; c++)
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
       if (grid[r][c].bomb) return true;
 
   // check if any group meets minimum size (skip already-visited cells)
   const visited = new Set<number>();
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const key = r * COLS + c;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const key = r * cols + c;
       if (visited.has(key) || grid[r][c].type < 0) continue;
       const group = getGroup(grid, r, c);
-      for (const [gr, gc] of group) visited.add(gr * COLS + gc);
+      for (const [gr, gc] of group) visited.add(gr * cols + gc);
       if (group.length >= minGroupSize(grid[r][c].type)) return true;
     }
   }
@@ -232,9 +268,11 @@ export function hasValidMoves(grid: Cell[][]): boolean {
 // --- Shuffle (Fisher-Yates) ---
 
 export function shuffleGrid(grid: Cell[][]): Cell[][] {
+  const rows = grid.length;
+  const cols = grid[0].length;
   const cells: Cell[] = [];
-  for (let r = 0; r < ROWS; r++)
-    for (let c = 0; c < COLS; c++)
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
       cells.push({ ...grid[r][c] });
 
   for (let i = cells.length - 1; i > 0; i--) {
@@ -244,9 +282,9 @@ export function shuffleGrid(grid: Cell[][]): Cell[][] {
 
   const newGrid: Cell[][] = [];
   let idx = 0;
-  for (let r = 0; r < ROWS; r++) {
+  for (let r = 0; r < rows; r++) {
     const row: Cell[] = [];
-    for (let c = 0; c < COLS; c++) {
+    for (let c = 0; c < cols; c++) {
       row.push(cells[idx++]);
     }
     newGrid.push(row);
@@ -257,10 +295,12 @@ export function shuffleGrid(grid: Cell[][]): Cell[][] {
 // --- Erase all of one type ---
 
 export function eraseAllOfType(grid: Cell[][], targetType: number): { newGrid: Cell[][], erasedCount: number } {
+  const rows = grid.length;
+  const cols = grid[0].length;
   const newGrid = grid.map(row => [...row]);
   let erasedCount = 0;
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
       if (newGrid[r][c].type === targetType && !newGrid[r][c].bomb) {
         newGrid[r][c] = { type: -1, bomb: false };
         erasedCount++;
@@ -273,13 +313,13 @@ export function eraseAllOfType(grid: Cell[][], targetType: number): { newGrid: C
 // --- Henkou (convert type) ---
 
 export function convertType(grid: Cell[][], fromType: number): Cell[][] {
+  const rows = grid.length;
+  const cols = grid[0].length;
   const basicTypes = [0, 1, 2, 3, 4, 5].filter(t => t !== fromType);
-  // Pick ONE random target type for all converted cells
   const targetType = basicTypes[Math.floor(Math.random() * basicTypes.length)];
-  // Shallow copy rows, only deep-copy affected cells
   const newGrid = grid.map(row => [...row]);
-  for (let r = 0; r < ROWS; r++)
-    for (let c = 0; c < COLS; c++)
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
       if (newGrid[r][c].type === fromType && !newGrid[r][c].bomb)
         newGrid[r][c] = { type: targetType, bomb: false, gen: newGrid[r][c].gen };
   return newGrid;
@@ -304,7 +344,7 @@ export function checkLevelUp(state: GameState): LevelUpResult {
   }
 
   const newLevel = state.level + 1;
-  const earnedEraser = newLevel >= 3;
+  const earnedEraser = newLevel >= 2;
   const earnedShuffle = newLevel >= 5 && newLevel % 2 === 0;
   const earnedHenkou = newLevel >= 10 && newLevel % 10 === 0;
   const earnedAll = newLevel >= 20 && newLevel % 20 === 0;
@@ -343,7 +383,7 @@ const RARE_VALUE: number[] = [
   550,  // type19 ユニコーン
   700,  // type20 フェニックス
   880,  // type21 麒麟
-  1100, // type22 神
+  1100, // type22 時空
   1100, // type23 世界樹
   1100, // type24 海
   1100, // type25 大地
@@ -360,16 +400,15 @@ export function calcScore(erasedCount: number, cellType: number, level: number =
   const rare = erasedCount * (RARE_VALUE[cellType] ?? 0);
   let pts = base + rare;
   const hasBonus = rare > 0;
-  // Level coefficient: 段階的倍率（序盤から緩やかに上昇、LV50以降は2.0+漸増）
   const levelMultiplier =
-    level < 3  ? 1 :
-    level < 5  ? 1.1 :
-    level < 10 ? 1.2 :
-    level < 20 ? 1.35 :
-    level < 30 ? 1.5 :
-    level < 40 ? 1.7 :
-    level < 50 ? 1.85 :
-    2.0 + (level - 50) * 0.015;
+    level < 3  ? 2.0 :
+    level < 5  ? 2.5 :
+    level < 10 ? 3.0 :
+    level < 20 ? 4.0 :
+    level < 30 ? 5.0 :
+    level < 40 ? 6.5 :
+    level < 50 ? 8.0 :
+    10.0 + (level - 50) * 0.2;
   pts = Math.floor(pts * levelMultiplier);
   return { pts, bonus: hasBonus ? 'bonus' : 'none' };
 }

@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { COLS, DINO_EMOJI, DINO_NAMES, DINO_UNLOCK_LV, getNextUnlockInfo, groupsNeeded, ROWS, bombBoardMax } from '../game/constants';
+import { getBoardCols, getBoardRows, DINO_EMOJI, DINO_NAMES, DINO_UNLOCK_LV, getNextUnlockInfo, groupsNeeded, bombBoardMax } from '../game/constants';
 import { DINO_SOURCES } from '../game/images';
 import { GameBoard } from '../game/GameBoard';
 import {
@@ -36,6 +36,7 @@ import {
   getGroup,
   hasValidMoves,
   minGroupSize,
+  resizeGridKeepingCenter,
   shuffleGrid
 } from '../game/logic';
 import { BGM_NAMES, getCurrentBGMIndex, loadSoundEffects, onBgmChange, playBomb, playBonus, playBonusBig, playErase, playEraser, playGameOver, playHenkou, playShuffle, playTick, setSoundVolume, startBGM, stopBGM, switchBGM } from '../game/sound';
@@ -77,23 +78,25 @@ export default function GameScreen() {
   const router = useRouter();
   const adState = useAd();
 
-  // Layout calculations (responsive: use both width & height to fit tablets)
+  // Game state (declared early so layout can depend on level)
+  const [gameState, setGameState] = React.useState<GameState | null>(null);
+
+  // Layout calculations (responsive to current level's board size)
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  // 端末幅連動: 狭い端末（iPhone SE 等 375pt 以下）は最小 2pt、広い端末は最大 8pt
+  const currentLevel = gameState?.level ?? 1;
+  const currentCols = getBoardCols(currentLevel);
+  const currentRows = getBoardRows(currentLevel);
   const horizontalPadding = Math.max(2, Math.min(8, Math.floor((screenWidth - 360) / 4)));
   const boardBorder = 1;
   const boardPadding = 0;
   const cellGap = 0;
   const maxBoardWidth = screenWidth - horizontalPadding * 2 - boardBorder * 2 - boardPadding * 2;
-  const cellFromWidth = Math.floor((maxBoardWidth - (COLS - 1) * cellGap) / COLS);
+  const cellFromWidth = Math.floor((maxBoardWidth - (currentCols - 1) * cellGap) / currentCols);
   const availableHeight = screenHeight - VERTICAL_OVERHEAD;
-  const cellFromHeight = Math.floor((availableHeight - (ROWS - 1) * cellGap) / ROWS);
+  const cellFromHeight = Math.floor((availableHeight - (currentRows - 1) * cellGap) / currentRows);
   const cellSize = Math.min(cellFromWidth, cellFromHeight);
-  const actualBoardInner = cellSize * COLS + cellGap * (COLS - 1);
+  const actualBoardInner = cellSize * currentCols + cellGap * (currentCols - 1);
   const gridMaxWidth = actualBoardInner + boardPadding * 2 + boardBorder * 2;
-
-  // Game state
-  const [gameState, setGameState] = React.useState<GameState | null>(null);
   const animatingRef = React.useRef(false);
   const [eraserMode, setEraserMode] = React.useState(false);
   const [henkouMode, setHenkouMode] = React.useState(false);
@@ -144,6 +147,8 @@ export default function GameScreen() {
   const [unlockOverlay, setUnlockOverlay] = React.useState<{ type: number; name: string } | null>(null);
   const unlockOverlayAnim = React.useRef(new Animated.Value(0)).current;
   const unlockBoltAnim = React.useRef(new Animated.Value(0)).current;
+  const [expandOverlay, setExpandOverlay] = React.useState<{ oldCols: number; oldRows: number; newCols: number; newRows: number } | null>(null);
+  const expandAnim = React.useRef(new Animated.Value(0)).current;
   const [rankings, setRankings] = React.useState<{ score: number; level: number; date: string }[]>([]);
   const [globalRankings, setGlobalRankings] = React.useState<GlobalRankEntry[]>([]);
   const [maxReachedLevel, setMaxReachedLevelState] = React.useState(1);
@@ -182,8 +187,12 @@ export default function GameScreen() {
 
       const saved = await loadGameState();
       if (saved && saved.running) {
-        // 復活回数フラグを盤面から復元（再起動でリセットされ多重復活する不具合の修正・v5.5.2）
         hasUsedReviveRef.current = saved.reviveUsed === true;
+        const expectedCols = getBoardCols(saved.level);
+        const expectedRows = getBoardRows(saved.level);
+        if (saved.grid[0].length !== expectedCols || saved.grid.length !== expectedRows) {
+          saved.grid = resizeGridKeepingCenter(saved.grid, saved.level);
+        }
         setGameState(saved);
       } else {
         const initial = createInitialState();
@@ -228,12 +237,11 @@ export default function GameScreen() {
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [gameState]);
 
-  // Exchange button animation: trigger once when eraserCount reaches 10
   React.useEffect(() => {
     if (!gameState) return;
     const prev = prevEraserCountRef.current;
     prevEraserCountRef.current = gameState.eraserCount;
-    if (prev !== null && prev < 10 && gameState.eraserCount >= 10) {
+    if (prev !== null && prev < 5 && gameState.eraserCount >= 5) {
       Animated.sequence([
         Animated.timing(exchangeAnim, { toValue: 1.2, duration: 200, useNativeDriver: true }),
         Animated.timing(exchangeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
@@ -287,7 +295,7 @@ export default function GameScreen() {
 
   // Deferred popup ref - used to avoid setState during render (inside setGameState callbacks)
   const deferredPopupRef = React.useRef<{ text: string; duration: number } | null>(null);
-  const deferredLevelUpRef = React.useRef<{ dotsFlash: boolean; newDino: number | null; pageIndex: number }>({ dotsFlash: false, newDino: null, pageIndex: 0 });
+  const deferredLevelUpRef = React.useRef<{ dotsFlash: boolean; newDino: number | null; pageIndex: number; boardChange: string | null; expandInfo: { oldCols: number; oldRows: number; newCols: number; newRows: number } | null }>({ dotsFlash: false, newDino: null, pageIndex: 0, boardChange: null, expandInfo: null });
 
   const showPopup = (text: string, duration = 150) => {
     popupTextRef.current = text;
@@ -380,10 +388,12 @@ export default function GameScreen() {
       const targetType = cell.type;
       // Build converted cell keys before state update
       const convKeys = new Set<number>();
-      for (let rr = 0; rr < ROWS; rr++)
-        for (let cc = 0; cc < COLS; cc++)
+      const gRows = gs.grid.length;
+      const gCols = gs.grid[0].length;
+      for (let rr = 0; rr < gRows; rr++)
+        for (let cc = 0; cc < gCols; cc++)
           if (gs.grid[rr][cc].type === targetType && !gs.grid[rr][cc].bomb)
-            convKeys.add(rr * COLS + cc);
+            convKeys.add(rr * gCols + cc);
       setConvertedCells(convKeys);
       setTimeout(() => setConvertedCells(new Set()), 600);
       setGameState(prev => {
@@ -409,10 +419,12 @@ export default function GameScreen() {
 
       // Highlight all cells of this type briefly
       const allKeys = new Set<number>();
-      for (let rr = 0; rr < ROWS; rr++)
-        for (let cc = 0; cc < COLS; cc++)
+      const aRows = gs.grid.length;
+      const aCols = gs.grid[0].length;
+      for (let rr = 0; rr < aRows; rr++)
+        for (let cc = 0; cc < aCols; cc++)
           if (gs.grid[rr][cc].type === targetType && !gs.grid[rr][cc].bomb)
-            allKeys.add(rr * COLS + cc);
+            allKeys.add(rr * aCols + cc);
       setHighlightCells(allKeys);
       await delay(300);
       setHighlightCells(new Set());
@@ -457,9 +469,10 @@ export default function GameScreen() {
         const result = explodeBomb(gs.grid, r, c);
         // Build distance map from bomb origin for cascading effect
         const distMap = new Map<number, number>();
+        const bCols = gs.grid[0].length;
         for (const key of result.destroyed) {
-          const cr = Math.floor(key / COLS);
-          const cc = key % COLS;
+          const cr = Math.floor(key / bCols);
+          const cc = key % bCols;
           const dist = Math.abs(cr - r) + Math.abs(cc - c);
           distMap.set(key, dist);
         }
@@ -595,6 +608,16 @@ export default function GameScreen() {
     if (result.earnedHenkou) ns.henkouCount = (state.henkouCount || 0) + 1;
     if (result.earnedAll) ns.allCount = (state.allCount || 0) + 1;
 
+    const oldCols = getBoardCols(state.level);
+    const oldRows = getBoardRows(state.level);
+    const newCols = getBoardCols(result.newLevel);
+    const newRows = getBoardRows(result.newLevel);
+    if (newCols !== oldCols || newRows !== oldRows) {
+      ns.grid = resizeGridKeepingCenter(state.grid, result.newLevel);
+    }
+
+    const boardChanged = newCols !== oldCols || newRows !== oldRows;
+
     if (showMsg) {
       let msg = `🎉 LV${result.newLevel}!`;
       const items: string[] = [];
@@ -609,6 +632,13 @@ export default function GameScreen() {
       deferPopup(msg, 250);
     }
 
+    if (boardChanged) {
+      deferredLevelUpRef.current.boardChange = `📐 ${oldCols}×${oldRows} → ${newCols}×${newRows}`;
+      deferredLevelUpRef.current.expandInfo = { oldCols, oldRows, newCols, newRows };
+      setExpandOverlay({ oldCols, oldRows, newCols, newRows });
+      expandAnim.setValue(0);
+    }
+
     // Defer new dino footer highlight (popup removed, footer pulse instead)
     const unannounced = result.newTypes.filter(t => !ns.announcedTypes.includes(t));
     if (unannounced.length > 0) {
@@ -618,6 +648,19 @@ export default function GameScreen() {
     }
 
     return ns;
+  };
+
+  const startExpandAnimation = () => {
+    if (settings.hapticsOn) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    Animated.sequence([
+      Animated.delay(500),
+      Animated.timing(expandAnim, { toValue: 1, duration: 600, useNativeDriver: false }),
+      Animated.delay(400),
+    ]).start(() => {
+      setExpandOverlay(null);
+    });
   };
 
   const flushDeferredLevelUp = () => {
@@ -631,7 +674,9 @@ export default function GameScreen() {
     if (d.newDino !== null) {
       const newType = d.newDino;
       const pageIndex = d.pageIndex;
+      const boardChangeText = d.boardChange;
       d.newDino = null;
+      d.boardChange = null;
       // カットイン演出（settings.unlockAnimationOn ON のとき）
       if (settings.unlockAnimationOn) {
         setUnlockOverlay({ type: newType, name: dinoName(newType) });
@@ -648,7 +693,19 @@ export default function GameScreen() {
           Animated.timing(unlockOverlayAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
         ]).start(() => {
           setUnlockOverlay(null);
+          if (d.expandInfo) {
+            startExpandAnimation();
+            d.expandInfo = null;
+          }
         });
+      } else {
+        const expandInfoForNonAnim = d.expandInfo;
+        d.expandInfo = null;
+        if (expandInfoForNonAnim) {
+          setTimeout(() => {
+            startExpandAnimation();
+          }, 400);
+        }
       }
       if (levelUpTimer.current) clearTimeout(levelUpTimer.current);
       levelUpTimer.current = setTimeout(() => {
@@ -664,6 +721,14 @@ export default function GameScreen() {
             Animated.timing(footerPulseAnim, { toValue: 1, duration: 350, useNativeDriver: true })
               .start(() => setNewDinoHighlight(null));
           });
+      }, 400);
+    }
+    if (d.newDino === null && d.expandInfo) {
+      const info = d.expandInfo;
+      d.expandInfo = null;
+      d.boardChange = null;
+      setTimeout(() => {
+        startExpandAnimation();
       }, 400);
     }
   };
@@ -873,11 +938,12 @@ export default function GameScreen() {
   };
 
   const handleHint = () => {
-    // Find a valid move and highlight it with a pulsing border
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
+    const hRows = grid.length;
+    const hCols = grid[0].length;
+    for (let r = 0; r < hRows; r++) {
+      for (let c = 0; c < hCols; c++) {
         if (grid[r][c].bomb) {
-          setHighlightCells(new Set([r * COLS + c]));
+          setHighlightCells(new Set([r * hCols + c]));
           settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           if (hintTimer.current) clearTimeout(hintTimer.current);
           hintTimer.current = setTimeout(() => setHighlightCells(new Set()), 5000);
@@ -887,7 +953,7 @@ export default function GameScreen() {
         if (grid[r][c].type < 0) continue;
         const group = getGroup(grid, r, c);
         if (group.length >= minGroupSize(grid[r][c].type)) {
-          setHighlightCells(new Set(group.map(([gr, gc]) => gr * COLS + gc)));
+          setHighlightCells(new Set(group.map(([gr, gc]) => gr * hCols + gc)));
           settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           if (hintTimer.current) clearTimeout(hintTimer.current);
           hintTimer.current = setTimeout(() => setHighlightCells(new Set()), 5000);
@@ -903,8 +969,20 @@ export default function GameScreen() {
   };
 
   const handleExchange = () => {
-    if (eraserCount < 10) return;
+    if (eraserCount < 5) return;
     setExchangeVisible(true);
+  };
+
+  const confirmExchangeMIX = () => {
+    setExchangeVisible(false);
+    setGameState(prev => {
+      if (!prev || prev.eraserCount < 5) return prev;
+      const ns = { ...prev, eraserCount: prev.eraserCount - 5, shuffleCount: prev.shuffleCount + 1 };
+      gsRef.current = ns;
+      return ns;
+    });
+    settings.hapticsOn && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    showPopup(t('exchange_mix_done'), 200);
   };
 
   const confirmExchangeCHG = () => {
@@ -975,7 +1053,7 @@ export default function GameScreen() {
                     return nextUnlock ? (
                       <>
                         <Text style={styles.nextUnlockHint}>
-                          {tf('char_next_unlock', nextUnlock.remaining)}
+                          {tf('char_next_unlock', nextUnlock.nextLevel)}
                         </Text>
                         <Image source={DINO_SOURCES[nextUnlock.nextType]} style={styles.nextUnlockIcon} contentFit="contain" />
                       </>
@@ -985,15 +1063,18 @@ export default function GameScreen() {
                   })()}
                 </View>
                 <View style={styles.navCenterBottomRight}>
-                  <View style={styles.progressBarTrack}>
-                    <View
-                      style={[
-                        styles.progressBarFill,
-                        dotsFlash
-                          ? styles.progressBarFillFlash
-                          : { width: `${Math.min(erasedGroups, 10) * 10}%` },
-                      ]}
-                    />
+                  <View style={styles.progressBlocks}>
+                    {Array.from({ length: needed }, (_, i) => (
+                      <View
+                        key={i}
+                        style={[
+                          styles.progressBlock,
+                          i < erasedGroups
+                            ? (dotsFlash ? styles.progressBlockFlash : styles.progressBlockFilled)
+                            : styles.progressBlockEmpty,
+                        ]}
+                      />
+                    ))}
                   </View>
                 </View>
               </View>
@@ -1002,9 +1083,6 @@ export default function GameScreen() {
                 <Text style={styles.scoreValue}>{formatScore(score)}</Text>
               </View>
             </View>
-            <TouchableOpacity style={[styles.actionBtn, styles.hintBtn]} onPress={handleHint}>
-              <Text style={styles.actionBtnText}>HINT</Text>
-            </TouchableOpacity>
           </View>
 
           {/* Row 2: Items */}
@@ -1033,12 +1111,12 @@ export default function GameScreen() {
             ))}
             <Animated.View style={[styles.exchangeBtnWrap, { transform: [{ scale: exchangeAnim }] }]}>
               <TouchableOpacity
-                style={[styles.exchangeBtn, eraserCount >= 10 ? styles.exchangeBtnReady : styles.exchangeBtnLocked]}
+                style={[styles.exchangeBtn, eraserCount >= 5 ? styles.exchangeBtnReady : styles.exchangeBtnLocked]}
                 onPress={handleExchange}
-                disabled={eraserCount < 10}
+                disabled={eraserCount < 5}
               >
-                <Text style={[styles.exchangeBtnText, eraserCount >= 10 ? styles.exchangeBtnTextReady : styles.exchangeBtnTextLocked]}>
-                  {eraserCount >= 10 ? '✨' : '🔒'} {Math.min(eraserCount, 10)}/10
+                <Text style={[styles.exchangeBtnText, eraserCount >= 5 ? styles.exchangeBtnTextReady : styles.exchangeBtnTextLocked]}>
+                  {eraserCount >= 5 ? '✨' : '🔒'} {Math.min(eraserCount, 5)}/5
                 </Text>
               </TouchableOpacity>
             </Animated.View>
@@ -1073,6 +1151,38 @@ export default function GameScreen() {
                 onCellPress={stableCellPress}
               />
             </View>
+            {expandOverlay && (() => {
+              const { oldCols, oldRows, newCols, newRows } = expandOverlay;
+              const newW = cellSize * newCols;
+              const newH = cellSize * newRows;
+              const oldW = cellSize * oldCols;
+              const oldH = cellSize * oldRows;
+              const animW = expandAnim.interpolate({ inputRange: [0, 1], outputRange: [oldW, newW] });
+              const animH = expandAnim.interpolate({ inputRange: [0, 1], outputRange: [oldH, newH] });
+              const animOpacity = expandAnim.interpolate({ inputRange: [0, 0.8, 1], outputRange: [0.85, 0.3, 0] });
+              return (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }} pointerEvents="none">
+                  <Animated.View style={{
+                    width: animW, height: animH,
+                    borderWidth: 3, borderColor: '#fbbf24', borderRadius: 6,
+                    backgroundColor: 'transparent',
+                  }} />
+                  <Animated.View style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: '#000', opacity: animOpacity, borderRadius: 4,
+                  }}>
+                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 20, fontWeight: '900', color: '#fbbf24' }}>
+                        📐 {oldCols}×{oldRows} → {newCols}×{newRows}
+                      </Text>
+                      <Text style={{ fontSize: 24, fontWeight: '900', color: '#fff', marginTop: 4 }}>
+                        フィールド拡大！！
+                      </Text>
+                    </View>
+                  </Animated.View>
+                </View>
+              );
+            })()}
           </View>
         </View>
 
@@ -1362,6 +1472,13 @@ export default function GameScreen() {
               DEL ×{eraserCount}
             </Text>
             <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: '#0891b2', opacity: eraserCount >= 5 ? 1 : 0.4 }]}
+              onPress={confirmExchangeMIX}
+              disabled={eraserCount < 5}
+            >
+              <Text style={styles.modalBtnText}>{t('exchange_del_mix')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[styles.modalBtn, { opacity: eraserCount >= 10 ? 1 : 0.4 }]}
               onPress={confirmExchangeCHG}
               disabled={eraserCount < 10}
@@ -1486,7 +1603,7 @@ export default function GameScreen() {
                     <Text style={[styles.rulesTableCell, { flex: 3 }]}>{t('rules_th_effect')}</Text>
                   </View>
                   {[
-                    ['LV3〜', '🗑DEL', t('rules_item_del')],
+                    ['LV2〜', '🗑DEL', t('rules_item_del')],
                     ['LV5〜', '🔀MIX', t('rules_item_mix')],
                     ['LV10〜', '🔄CHG', t('rules_item_chg')],
                     ['LV20〜', '💥ALL', t('rules_item_all')],
@@ -1516,8 +1633,9 @@ export default function GameScreen() {
                     <Text style={styles.rulesTableCell}>{t('rules_th_needed')}</Text>
                   </View>
                   {[
+                    ['LV3', 5, '6', tf('rules_n_pcs', 6)],
                     ['LV5', 6, '7', tf('rules_n_pcs', 7)],
-                    ['LV10', 7, '8', tf('rules_n_pcs', 8)],
+                    ['LV11', 7, '8', tf('rules_n_pcs', 8)],
                     ['LV15', 8, '9', tf('rules_n_pcs', 9)],
                     ['LV20', 9, '10', tf('rules_n_pcs', 10)],
                     ['LV25', 10, '11', tf('rules_n_pcs', 11)],
@@ -2178,14 +2296,11 @@ const styles = StyleSheet.create({
   navCenterTopRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   navCenterBottomRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   nextUnlockIcon: { width: 22, height: 22 },
-  progressBarTrack: {
-    width: 120, height: 12, borderRadius: 6, overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.15)',
-    flexShrink: 1,
-  },
-  progressBarFill: { height: '100%', borderRadius: 5, backgroundColor: '#F97316' },
-  progressBarFillFlash: { width: '100%', backgroundColor: '#FBBF24' },
+  progressBlocks: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  progressBlock: { width: 10, height: 12, borderRadius: 2, borderWidth: 1 },
+  progressBlockEmpty: { backgroundColor: 'rgba(255,255,255,0.25)', borderColor: 'rgba(0,0,0,0.15)' },
+  progressBlockFilled: { backgroundColor: '#F97316', borderColor: '#ea580c' },
+  progressBlockFlash: { backgroundColor: '#FBBF24', borderColor: '#d97706' },
 
   // Items row (row 2)
   itemsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -2242,9 +2357,9 @@ const styles = StyleSheet.create({
   statusLv: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   statusLvLabel: { color: 'rgba(0,0,0,0.65)', fontSize: 12, fontWeight: '900', lineHeight: 14 },
   statusLvValue: { color: '#111827', fontSize: 30, fontWeight: '900', lineHeight: 32 },
-  statusScore: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  scoreLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1, color: 'rgba(0,0,0,0.55)', lineHeight: 12 },
-  scoreValue: { fontSize: 22, fontWeight: '900', letterSpacing: 1, color: '#111827', lineHeight: 26 },
+  statusScore: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 10, minWidth: 100 },
+  scoreLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, color: 'rgba(255,255,255,0.7)', lineHeight: 12 },
+  scoreValue: { fontSize: 28, fontWeight: '900', letterSpacing: 1, color: '#ffffff', lineHeight: 32, textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   nextUnlockHint: { fontSize: 13, fontWeight: '700', color: 'rgba(0,0,0,0.75)' },
 
   // キャラ解放カットイン演出
@@ -2279,7 +2394,6 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.7)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 6,
     letterSpacing: 2,
   },
-
   // Mode indicator
   modeIndicator: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
