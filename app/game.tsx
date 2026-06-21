@@ -190,8 +190,12 @@ export default function GameScreen() {
         hasUsedReviveRef.current = saved.reviveUsed === true;
         const expectedCols = getBoardCols(saved.level);
         const expectedRows = getBoardRows(saved.level);
-        if (saved.grid[0].length !== expectedCols || saved.grid.length !== expectedRows) {
-          saved.grid = resizeGridKeepingCenter(saved.grid, saved.level);
+        const savedRows = Array.isArray(saved.grid) ? saved.grid.length : 0;
+        const savedCols = Array.isArray(saved.grid?.[0]) ? saved.grid[0].length : 0;
+        if (savedRows !== expectedRows || savedCols !== expectedCols) {
+          saved.grid = savedRows > 0 && savedCols > 0
+            ? resizeGridKeepingCenter(saved.grid, saved.level)
+            : createInitialState(saved.level).grid;
         }
         setGameState(saved);
       } else {
@@ -1662,6 +1666,9 @@ export default function GameScreen() {
               {rulesPage === 5 && (<View style={styles.rulesPage}>
                 <Text style={styles.rulesTitle}>{t('rules_changelog_title')}</Text>
                 <Text style={styles.rulesText}>
+                  <Text style={styles.rulesBold}>v6.0.0</Text>{'（2026/06/22）\n'}
+                  {t('changelog_v600')}
+                  {'\n\n'}
                   <Text style={styles.rulesBold}>v5.6.1</Text>{'（2026/06/18）\n'}
                   {t('changelog_v560')}
                   {'\n\n'}
@@ -1791,7 +1798,7 @@ export default function GameScreen() {
               </View>
               <View style={styles.settingDivider} />
 
-              {/* BGM */}
+              {/* Toggles: BGM / Haptics / Drop Anim / Unlock Anim */}
               <View style={styles.settingSection}>
                 <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>{t('settings_bgm')}</Text>
@@ -1822,11 +1829,7 @@ export default function GameScreen() {
                     ))}
                   </View>
                 )}
-              </View>
-              <View style={styles.settingDivider} />
-
-              {/* Haptics */}
-              <View style={styles.settingSection}>
+                <View style={styles.settingThinDivider} />
                 <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>{t('settings_haptics')}</Text>
                   <TouchableOpacity
@@ -1838,11 +1841,7 @@ export default function GameScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-              <View style={styles.settingDivider} />
-
-              {/* Drop Animation */}
-              <View style={styles.settingSection}>
+                <View style={styles.settingThinDivider} />
                 <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>{t('settings_drop_anim')}</Text>
                   <TouchableOpacity
@@ -1854,11 +1853,7 @@ export default function GameScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-              <View style={styles.settingDivider} />
-
-              {/* Unlock Animation */}
-              <View style={styles.settingSection}>
+                <View style={styles.settingThinDivider} />
                 <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>{t('settings_unlock_anim')}</Text>
                   <TouchableOpacity
@@ -2554,6 +2549,7 @@ const styles = StyleSheet.create({
   settingSubLabel: { fontSize: 13, fontWeight: '700', color: '#6b7280' },
   settingBtnRow: { flexDirection: 'row', gap: 6, paddingVertical: 4 },
   settingDivider: { height: 1, backgroundColor: '#f0f0f0', marginHorizontal: 16 },
+  settingThinDivider: { height: 1, backgroundColor: '#f0f0f0', marginVertical: 4 },
 
   volBtn: {
     paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
