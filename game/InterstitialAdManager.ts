@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 let InterstitialAd: any = null;
@@ -21,6 +21,9 @@ const INTERSTITIAL_AD_UNIT = __DEV__ && TestIds
       ios: 'ca-app-pub-3965931075265436/5393634340',
       android: 'ca-app-pub-3965931075265436/5202062656',
     }) ?? '';
+
+const SHOW_FAIL_TIMEOUT_MS = 3000;
+const APP_STATE_SETTLE_DELAY_MS = 400;
 
 let interstitialAd: any = null;
 let isAdLoaded = false;
@@ -95,26 +98,75 @@ export async function showInterstitialAd(isPremium: boolean): Promise<void> {
 
   return new Promise((resolve) => {
     let settled = false;
+    let opened = false;
+    let sawInactive = false;
+    let appStateResumeTimer: ReturnType<typeof setTimeout> | null = null;
+    let failTimer: ReturnType<typeof setTimeout> | null = null;
+
+    let closedSub: (() => void) | undefined;
+    let errorSub: (() => void) | undefined;
+    let openedSub: (() => void) | undefined;
+    let appStateSub: { remove: () => void } | undefined;
+
+    const cleanup = () => {
+      try { closedSub && closedSub(); } catch {}
+      try { errorSub && errorSub(); } catch {}
+      try { openedSub && openedSub(); } catch {}
+      try { appStateSub && appStateSub.remove(); } catch {}
+      if (appStateResumeTimer) clearTimeout(appStateResumeTimer);
+      if (failTimer) clearTimeout(failTimer);
+    };
 
     const settle = () => {
       if (settled) return;
       settled = true;
       isAdLoaded = false;
-      try { closedSub && closedSub(); } catch {}
-      try { errorSub && errorSub(); } catch {}
+      cleanup();
       preloadInterstitialAd();
       resolve();
     };
 
-    const closedSub = interstitialAd.addAdEventListener(
+    closedSub = interstitialAd.addAdEventListener(
       AdEventType.CLOSED,
       () => settle()
     );
 
-    const errorSub = interstitialAd.addAdEventListener(
+    errorSub = interstitialAd.addAdEventListener(
       AdEventType.ERROR,
       () => settle()
     );
+
+    openedSub = interstitialAd.addAdEventListener(
+      AdEventType.OPENED,
+      () => {
+        opened = true;
+        if (failTimer) {
+          clearTimeout(failTimer);
+          failTimer = null;
+        }
+      }
+    );
+
+    // CLOSED が来ない端末向け: 広告表示中の inactive → active 復帰で settle
+    appStateSub = AppState.addEventListener('change', (next) => {
+      if (next === 'inactive' || next === 'background') {
+        sawInactive = true;
+      }
+      if (next === 'active' && sawInactive) {
+        if (appStateResumeTimer) clearTimeout(appStateResumeTimer);
+        appStateResumeTimer = setTimeout(() => {
+          if (!settled) settle();
+        }, APP_STATE_SETTLE_DELAY_MS);
+      }
+    });
+
+    // OPENED 前に失敗した場合（Modal 競合等）の救済
+    failTimer = setTimeout(() => {
+      if (!settled && !opened) {
+        console.warn('[InterstitialAd] Show failed to open — settling');
+        settle();
+      }
+    }, SHOW_FAIL_TIMEOUT_MS);
 
     try {
       interstitialAd.show();

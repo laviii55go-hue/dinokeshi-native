@@ -7,6 +7,7 @@ import {
   Alert,
   Animated,
   FlatList,
+  InteractionManager,
   Modal,
   Platform,
   ScrollView,
@@ -136,6 +137,8 @@ export default function TimeAttackScreen() {
   const [namePromptVisible, setNamePromptVisible] = React.useState(false);
   const [gameOverNameInput, setGameOverNameInput] = React.useState('');
   const pendingScoreRef = React.useRef<{ score: number; level: number } | null>(null);
+  const pendingRestartRef = React.useRef(false);
+  const pendingShowAdRef = React.useRef(false);
 
   // Combo
   const comboCountRef = React.useRef(0);
@@ -296,6 +299,26 @@ export default function TimeAttackScreen() {
     timerIdRef.current = null;
     return initial;
   };
+
+  const finishPendingRestart = () => {
+    if (!pendingRestartRef.current) return;
+    pendingRestartRef.current = false;
+    const showAd = pendingShowAdRef.current;
+    pendingShowAdRef.current = false;
+    resetForNewGame();
+    if (showAd) {
+      void showInterstitialAd(adState.isPremium);
+    }
+  };
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    if (gameOverVisible || !pendingRestartRef.current) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      finishPendingRestart();
+    });
+    return () => task.cancel();
+  }, [gameOverVisible]);
 
   const bombMaxUnlockLabel = (oldLevel: number, newLevel: number) => {
     const oldMax = bombBoardMax(oldLevel);
@@ -702,12 +725,10 @@ export default function TimeAttackScreen() {
     setGameOverVisible(true);
   };
 
-  const handleRestart = async () => {
+  const handleRestart = () => {
+    pendingRestartRef.current = true;
+    pendingShowAdRef.current = shouldShowOnTARestart();
     setGameOverVisible(false);
-    if (shouldShowOnTARestart()) {
-      await showInterstitialAd(adState.isPremium);
-    }
-    resetForNewGame();
   };
 
   const handleRetire = () => {
@@ -1050,8 +1071,13 @@ export default function TimeAttackScreen() {
         </TouchableOpacity>
       </Modal>}
 
-      {/* Game Over */}
-      {gameOverVisible && <Modal visible={gameOverVisible} transparent animationType="fade">
+      {/* Game Over — visible prop のみで制御（iOS onDismiss を確実に発火させる） */}
+      <Modal
+        visible={gameOverVisible}
+        transparent
+        animationType="fade"
+        onDismiss={Platform.OS === 'ios' ? finishPendingRestart : undefined}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.taGameOverLabel}>{t('ta_label')}</Text>
@@ -1087,7 +1113,7 @@ export default function TimeAttackScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>}
+      </Modal>
 
       {/* Exchange */}
       {exchangeVisible && <Modal visible={exchangeVisible} transparent animationType="fade">
