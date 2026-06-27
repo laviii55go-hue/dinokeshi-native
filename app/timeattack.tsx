@@ -866,6 +866,7 @@ export default function TimeAttackScreen() {
             <TouchableOpacity style={styles.navIconBtn} onPress={async () => {
               const r = await loadTARankings();
               setTaRankings(r);
+              setRankTab('local');
               setRankingVisible(true);
             }}>
               <Text style={styles.navIconText}>👑</Text>
@@ -1559,7 +1560,7 @@ const styles = StyleSheet.create({
   },
   lvChipValue: { color: '#111827', fontSize: 20, fontWeight: '900', lineHeight: 22 },
   statusLvLabel: { color: 'rgba(0,0,0,0.65)', fontSize: 10, fontWeight: '900', lineHeight: 12 },
-  scoreArea: { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
+  scoreArea: { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5, minWidth: 100 },
   timerChip: {
     flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 2,
@@ -1568,8 +1569,8 @@ const styles = StyleSheet.create({
   timerLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1, color: 'rgba(0,0,0,0.55)', lineHeight: 12 },
   timerValue: { fontSize: 30, fontWeight: '900', lineHeight: 34 },
   statusScore: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  scoreLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1, color: 'rgba(0,0,0,0.55)', lineHeight: 12 },
-  scoreValue: { fontSize: 22, fontWeight: '900', letterSpacing: 0.5, color: '#111827', lineHeight: 26 },
+  scoreLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, color: 'rgba(255,255,255,0.7)', lineHeight: 12 },
+  scoreValue: { fontSize: 28, fontWeight: '900', letterSpacing: 1, color: '#ffffff', lineHeight: 32, textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
 
   // TA badge + combo
   taBadgeRow: {
