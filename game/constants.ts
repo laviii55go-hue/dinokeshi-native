@@ -111,9 +111,9 @@ export const START_LEVEL_PRESETS = {
   10: { score: 1100, eraserCount: 4, shuffleCount: 1, henkouCount: 0, allCount: 0 },
   30: { score: 5800, eraserCount: 9, shuffleCount: 4, henkouCount: 1, allCount: 0 },
   50: { score: 17000, eraserCount: 15, shuffleCount: 7, henkouCount: 1, allCount: 1 },
-  70: { score: 41000, eraserCount: 22, shuffleCount: 11, henkouCount: 2, allCount: 1 },
-  90: { score: 88000, eraserCount: 28, shuffleCount: 14, henkouCount: 2, allCount: 2 },
-  100: { score: 136000, eraserCount: 31, shuffleCount: 16, henkouCount: 3, allCount: 2 },
+  70: { score: 35000, eraserCount: 22, shuffleCount: 11, henkouCount: 2, allCount: 1 },
+  90: { score: 40000, eraserCount: 28, shuffleCount: 14, henkouCount: 2, allCount: 2 },
+  100: { score: 43000, eraserCount: 31, shuffleCount: 16, henkouCount: 3, allCount: 2 },
 } as const;
 
 export type StartLevelPreset = keyof typeof START_LEVEL_PRESETS;

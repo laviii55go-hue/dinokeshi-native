@@ -1,5 +1,8 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 const FB_DB = 'https://dino-keshi-default-rtdb.asia-southeast1.firebasedatabase.app';
 const FB_TA_SCORES_URL = FB_DB + '/ta_scores.json';
+const FB_TA_LAST_CLEANUP_KEY = 'dinoKeshiTALastCleanup';
 
 export interface TAGlobalRankEntry {
   name: string;
@@ -20,8 +23,36 @@ export function invalidateTARankingsCache() {
   _cacheTs = 0;
 }
 
+async function runCleanupIfNeeded(): Promise<void> {
+  const now = Date.now();
+  try {
+    const lastCleanup = await AsyncStorage.getItem(FB_TA_LAST_CLEANUP_KEY);
+    if (lastCleanup) {
+      const last = new Date(parseInt(lastCleanup, 10));
+      const current = new Date(now);
+      if (last.getFullYear() === current.getFullYear() && last.getMonth() === current.getMonth()) return;
+    }
+    const d = new Date();
+    const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    const url = `${FB_DB}/ta_scores.json?orderBy="ts"&endAt=${monthStart - 1}`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data) {
+      await AsyncStorage.setItem(FB_TA_LAST_CLEANUP_KEY, String(now));
+      return;
+    }
+    const keys = Object.keys(data);
+    await Promise.all(keys.map(key => fetch(`${FB_DB}/ta_scores/${key}.json`, { method: 'DELETE' })));
+    await AsyncStorage.setItem(FB_TA_LAST_CLEANUP_KEY, String(now));
+  } catch (e) {
+    console.warn('TA Cleanup failed:', e);
+  }
+}
+
 async function fetchMonthlyEntries(): Promise<TAGlobalRankEntry[]> {
   const now = Date.now();
+  runCleanupIfNeeded(); // fire & forget
   if (_cachedEntries && now - _cacheTs < CACHE_TTL) return _cachedEntries;
   try {
     const d = new Date();
@@ -49,7 +80,7 @@ export async function fetchTAGlobalRankings(period: RankPeriod = 'daily'): Promi
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const todayEnd = todayStart + DAY;
-  const weekStart = todayStart - (now.getDay() * DAY);
+  const weekStart = todayStart - ((now.getDay() + 6) % 7) * DAY; // Monday start
 
   const filtered = entries.filter(d => {
     if (!d.ts) return false;
